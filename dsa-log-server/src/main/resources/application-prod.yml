@@ -1,0 +1,35 @@
+# 生产 profile：靠 --spring.profiles.active=prod 激活（见 Dockerfile 的 ENTRYPOINT）
+#
+# 只覆盖「开发态默认值在生产不可接受」的几项，其余继承 application.yml。
+server:
+  # 只监听回环：公网流量必须经 nginx 进来（basic auth 在那一层），
+  # 8080 直接暴露等于把鉴权绕过
+  address: 127.0.0.1
+
+spring:
+  datasource:
+    hikari:
+      # 2G 机器：8 条连接的峰值内存与 MySQL 的 buffer pool 要一起算
+      maximum-pool-size: 8
+      minimum-idle: 2
+      connection-timeout: 3000
+
+mybatis-plus:
+  configuration:
+    # 关键：开发态是 StdOutImpl，会把每条 SQL 与结果集打到标准输出。
+    # 生产上既拖性能又把磁盘写满（docker json-file 有 max-size，但刷屏会让真日志被挤掉）
+    log-impl: org.apache.ibatis.logging.nologging.NoLoggingImpl
+    # 生产不开 SQL 打印，camelCase 映射仍要保留
+    map-underscore-to-camel-case: true
+
+logging:
+  level:
+    root: info
+    com.baimo.dsalogserver: info
+    org.springframework.web: warn
+
+app:
+  cors:
+    # 空串 = 不注册 CORS 规则。生产由 nginx 同域反代，浏览器不会发跨域请求；
+    # 配 localhost:5173 只是留个口子，没意义
+    allowed-origins:

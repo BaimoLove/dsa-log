@@ -1,0 +1,38 @@
+# 单服务编排。目录约定见 deploy/RUNBOOK.md：
+#   /opt/dsa/api/{app.jar,Dockerfile,compose.yaml,dump/}
+#
+# 四条必配项，漏一条就出事（都在下面标了原因）：
+#   network_mode: host   连不上 127.0.0.1 的 MySQL（容器自己的回环是空的）
+#   TZ                   时区差 8 小时，复习日期全错
+#   logging.max-size     json 日志撑满磁盘，单机 Docker 最常见事故
+#   mem_limit            OOM 拖垮整机 MySQL
+services:
+  api:
+    build: .
+    image: dsa-api:${IMAGE_TAG:-latest}
+    container_name: dsa-api
+    network_mode: host
+    restart: unless-stopped
+    mem_limit: 900m
+    memswap_limit: 900m
+    environment:
+      TZ: Asia/Shanghai
+      # 数据库口令走 .env（chmod 600），不写进 yml 进版本库
+      DB_USER: ${DB_USER:-root}
+      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD 必须写在同目录的 .env 里}
+      DB_NAME: ${DB_NAME:-dsa_log}
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /opt/dsa/api/dump:/app/dump
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      # 只打回环，且不校验 code：容器 up 且 Spring 上下文起来就够了
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/api/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
