@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.baimo.dsalogserver.mapper.ProblemMapper">
+
+    <sql id="baseColumns">
+        p.id, p.title, p.difficulty, p.status, p.approach, p.note, p.source, p.url,
+        p.solved_at, p.last_solved_at, p.solve_count, p.review_stage, p.next_review_at,
+        p.created_at, p.updated_at
+    </sql>
+
+    <sql id="whereClause">
+        <where>
+            p.deleted = 0
+            <if test="q.keyword != null and q.keyword != ''">
+                AND (
+                    p.title LIKE CONCAT('%', #{q.keyword}, '%')
+                    OR p.approach LIKE CONCAT('%', #{q.keyword}, '%')
+                    OR p.note LIKE CONCAT('%', #{q.keyword}, '%')
+                    OR p.source LIKE CONCAT('%', #{q.keyword}, '%')
+                )
+            </if>
+            <if test="q.difficulties != null and q.difficulties.size() > 0">
+                AND p.difficulty IN
+                <foreach collection="q.difficulties" item="d" open="(" separator="," close=")">#{d}</foreach>
+            </if>
+            <if test="q.statuses != null and q.statuses.size() > 0">
+                AND p.status IN
+                <foreach collection="q.statuses" item="s" open="(" separator="," close=")">#{s}</foreach>
+            </if>
+            <if test="q.listId != null and q.listId != ''">
+                AND p.id IN (
+                    SELECT li.problem_id FROM problem_list_item li WHERE li.list_id = #{q.listId}
+                )
+            </if>
+            <!-- 多标签 AND：子查询 + COUNT(DISTINCT)，避免 JOIN+GROUP BY 干扰分页 COUNT -->
+            <if test="q.tagCount > 0">
+                AND p.id IN (
+                    SELECT pt.problem_id FROM problem_tag pt
+                    WHERE pt.tag_id IN
+                    <foreach collection="q.tagIds" item="t" open="(" separator="," close=")">#{t}</foreach>
+                    GROUP BY pt.problem_id
+                    HAVING COUNT(DISTINCT pt.tag_id) = #{q.tagCount}
+                )
+            </if>
+        </where>
+    </sql>
+
+    <select id="selectPageList" resultType="com.baimo.dsalogserver.entity.Problem">
+        SELECT <include refid="baseColumns"/>
+        FROM problem p
+        <include refid="whereClause"/>
+        ORDER BY
+        <choose>
+            <when test="q.sort == 'createdAt_desc'">p.created_at DESC</when>
+            <when test="q.sort == 'difficulty_asc'">p.difficulty ASC, p.updated_at DESC</when>
+            <when test="q.sort == 'difficulty_desc'">p.difficulty DESC, p.updated_at DESC</when>
+            <when test="q.sort == 'nextReviewAt_asc'">p.next_review_at IS NULL, p.next_review_at ASC</when>
+            <when test="q.sort == 'solvedAt_desc'">p.solved_at IS NULL, p.solved_at DESC</when>
+            <otherwise>p.updated_at DESC</otherwise>
+        </choose>
+        LIMIT #{offset}, #{size}
+    </select>
+
+    <select id="countByQuery" resultType="long">
+        SELECT COUNT(*) FROM problem p
+        <include refid="whereClause"/>
+    </select>
+
+    <select id="selectForUpdate" resultType="com.baimo.dsalogserver.entity.Problem">
+        SELECT <include refid="baseColumns"/>
+        FROM problem p
+        WHERE p.id = #{id} AND p.deleted = 0
+        FOR UPDATE
+    </select>
+
+    <select id="selectRandomOne" resultType="com.baimo.dsalogserver.entity.Problem">
+        SELECT <include refid="baseColumns"/>
+        FROM problem p
+        WHERE p.deleted = 0
+        <if test="status != null and status != ''">
+            AND p.status = #{status}
+        </if>
+        <if test="excludeIds != null and excludeIds.size() > 0">
+            AND p.id NOT IN
+            <foreach collection="excludeIds" item="e" open="(" separator="," close=")">#{e}</foreach>
+        </if>
+        ORDER BY RAND()
+        LIMIT 1
+    </select>
+
+    <update id="markSolvedBatch">
+        UPDATE problem p
+        SET p.status = 'solved',
+            p.last_solved_at = NOW(3),
+            p.solve_count = p.solve_count + 1,
+            p.solved_at = IFNULL(p.solved_at, NOW(3)),
+            p.next_review_at = IFNULL(p.next_review_at, DATE_ADD(NOW(3), INTERVAL 1 DAY)),
+            p.updated_at = NOW(3)
+        WHERE p.deleted = 0 AND p.id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+    </update>
+
+</mapper>
