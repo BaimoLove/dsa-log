@@ -33,6 +33,8 @@ public class Problem {
     private Integer solveCount;
     private Integer reviewStage;
     private LocalDateTime nextReviewAt;
+    /** 最近一次复习评分时间；与 MARK_SOLVED 的 lastSolvedAt 是两个不同事件 */
+    private LocalDateTime lastReviewedAt;
 
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

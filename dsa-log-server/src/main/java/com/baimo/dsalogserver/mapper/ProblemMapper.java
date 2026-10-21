@@ -27,6 +27,15 @@ public interface ProblemMapper extends BaseMapper<Problem> {
                             @Param("excludeIds") List<String> excludeIds);
 
     /**
+     * 待复习队列：status='solved' 且 next_review_at &lt;= now，按到期时间升序。
+     * 判据刻意不用「今天 23:59」，否则早上到期的题在中午看不到。
+     */
+    List<Problem> selectDue(@Param("now") LocalDateTime now, @Param("limit") int limit);
+
+    /** 待复习总数：不受 limit 影响，纯索引区间扫描（idx_due 三列全覆盖） */
+    long countDue(@Param("now") LocalDateTime now);
+
+    /**
      * 批量加锁查询。批量操作要先读出「变更前的行」才能写复习流水与算 affected，
      * 排序后再加锁，避免两个批次以不同顺序拿锁互相等待。
      */

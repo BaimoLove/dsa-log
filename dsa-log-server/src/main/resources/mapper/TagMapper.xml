@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.baimo.dsalogserver.mapper.TagMapper">
+
+    <!--
+      标签 + 引用它的未删题目数。
+      p.deleted = 0 必须写在 ON 上：写进 WHERE 会把 LEFT JOIN 退化成 INNER JOIN，
+      没有被引用的标签会直接从列表里消失。
+      COUNT(p.id) 而非 COUNT(*)：逻辑删的题会留下一行 p.id 为 NULL 的占位行。
+    -->
+    <sql id="usageColumns">
+        SELECT t.id, t.name, t.color, t.created_at AS createdAt, COUNT(p.id) AS usageCount
+        FROM tag t
+        LEFT JOIN problem_tag pt ON pt.tag_id = t.id
+        LEFT JOIN problem p ON p.id = pt.problem_id AND p.deleted = 0
+    </sql>
+
+    <select id="selectWithUsage" resultType="com.baimo.dsalogserver.vo.TagUsageRow">
+        <include refid="usageColumns"/>
+        <where>
+            <if test="keyword != null and keyword != ''">
+                t.name LIKE CONCAT('%', #{keyword}, '%')
+            </if>
+        </where>
+        GROUP BY t.id, t.name, t.color, t.created_at
+        ORDER BY usageCount DESC, t.name ASC
+    </select>
+
+    <select id="selectUsageById" resultType="com.baimo.dsalogserver.vo.TagUsageRow">
+        <include refid="usageColumns"/>
+        WHERE t.id = #{id}
+        GROUP BY t.id, t.name, t.color, t.created_at
+    </select>
+
+    <select id="countByName" resultType="int">
+        SELECT COUNT(*) FROM tag t
+        WHERE t.name = #{name}
+        <if test="excludeId != null and excludeId != ''">
+            AND t.id != #{excludeId}
+        </if>
+    </select>
+
+</mapper>

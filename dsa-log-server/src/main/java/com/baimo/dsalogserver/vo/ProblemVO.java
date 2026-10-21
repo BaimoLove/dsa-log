@@ -26,6 +26,7 @@ public class ProblemVO {
     private Integer solveCount;
     private Integer reviewStage;
     private Long nextReviewAt;
+    private Long lastReviewedAt;
 
     private Long createdAt;
     private Long updatedAt;

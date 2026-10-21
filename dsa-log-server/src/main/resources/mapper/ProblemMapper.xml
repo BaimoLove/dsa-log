@@ -115,6 +115,24 @@
     </select>
 
     <!--
+      待复习队列。判据是 next_review_at <= now，而不是「今天 23:59」：
+      按自然日算会让早上到期的题在中午之前都看不见。
+      走 idx_due (deleted, status, next_review_at)：前两列等值、第三列范围。
+    -->
+    <select id="selectDue" resultType="com.baimo.dsalogserver.entity.Problem">
+        SELECT <include refid="baseColumns"/>
+        FROM problem p
+        WHERE p.deleted = 0 AND p.status = 'solved' AND p.next_review_at &lt;= #{now}
+        ORDER BY p.next_review_at ASC
+        LIMIT #{limit}
+    </select>
+
+    <select id="countDue" resultType="long">
+        SELECT COUNT(*) FROM problem p
+        WHERE p.deleted = 0 AND p.status = 'solved' AND p.next_review_at &lt;= #{now}
+    </select>
+
+    <!--
       左右求值顺序有讲究：MySQL 单表 UPDATE 的 SET 子句从左到右赋值，
       review_stage 依赖 next_review_at 的旧值，必须写在 next_review_at 之前，
       否则判据恒为假、阶段永远不重置。

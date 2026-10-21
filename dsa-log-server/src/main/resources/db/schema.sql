@@ -23,6 +23,9 @@ CREATE TABLE IF NOT EXISTS `problem` (
   `solve_count`    INT UNSIGNED     NOT NULL DEFAULT 0          COMMENT '累计已刷次数',
   `review_stage`   TINYINT UNSIGNED NOT NULL DEFAULT 0          COMMENT '复习阶段 0-4',
   `next_review_at` DATETIME(3)      NULL                       COMMENT '下次复习时间，NULL=不在复习池',
+  -- M6.5 变更：前端 Problem 模型一直有 lastReviewedAt，后端漏了这一列。已建过库的不用重建，执行：
+  --   ALTER TABLE `problem` ADD COLUMN `last_reviewed_at` DATETIME(3) NULL COMMENT '最近一次复习评分时间' AFTER `next_review_at`;
+  `last_reviewed_at` DATETIME(3)    NULL                       COMMENT '最近一次复习评分时间',
   `created_at`     DATETIME(3)      NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   `updated_at`     DATETIME(3)      NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
   `deleted`        TINYINT UNSIGNED NOT NULL DEFAULT 0          COMMENT '0 正常 / 1 已删',

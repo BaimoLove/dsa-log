@@ -31,6 +31,7 @@ public class ProblemConverter {
         vo.setSolveCount(p.getSolveCount() == null ? 0 : p.getSolveCount());
         vo.setReviewStage(p.getReviewStage() == null ? 0 : p.getReviewStage());
         vo.setNextReviewAt(TimeUtil.toMillis(p.getNextReviewAt()));
+        vo.setLastReviewedAt(TimeUtil.toMillis(p.getLastReviewedAt()));
         vo.setCreatedAt(TimeUtil.toMillis(p.getCreatedAt()));
         vo.setUpdatedAt(TimeUtil.toMillis(p.getUpdatedAt()));
 

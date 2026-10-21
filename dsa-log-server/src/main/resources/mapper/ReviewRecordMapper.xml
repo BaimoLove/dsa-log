@@ -12,5 +12,26 @@
              #{r.intervalDays}, #{r.nextReviewAt}, #{r.reviewedAt}, #{r.createdAt})
         </foreach>
     </insert>
+    <select id="selectByProblemId" resultType="com.baimo.dsalogserver.entity.ReviewRecord">
+        SELECT * FROM review_record
+        WHERE problem_id = #{problemId}
+        ORDER BY reviewed_at DESC
+    </select>
+
+    <!--
+      今日口径：左闭右开 [今日00:00, 明日00:00)，边界由 Java 侧算好传入，
+      不对索引列套 DATE()。idx_kind_time (kind, reviewed_at) 正好覆盖。
+    -->
+    <select id="countDistinctSolvedBetween" resultType="long">
+        SELECT COUNT(DISTINCT problem_id) FROM review_record
+        WHERE kind = 'MARK_SOLVED'
+          AND reviewed_at &gt;= #{start} AND reviewed_at &lt; #{end}
+    </select>
+
+    <select id="countReviewBetween" resultType="long">
+        SELECT COUNT(*) FROM review_record
+        WHERE kind = 'REVIEW'
+          AND reviewed_at &gt;= #{start} AND reviewed_at &lt; #{end}
+    </select>
 
 </mapper>
