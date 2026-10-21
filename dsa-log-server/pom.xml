@@ -67,9 +67,6 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
             </plugin>
-            <!-- 语言级别由父 POM 的 java.version=17 经 maven.compiler.release 统一控制。
-                 这里不再写 source/target：Initializr 生成的 16 与 java.version 冲突，
-                 且会让 IDE 把模块语言级别识别成 16，与 JDK17 编译的依赖不匹配。 -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
@@ -78,6 +75,9 @@
                         <path>
                             <groupId>org.projectlombok</groupId>
                             <artifactId>lombok</artifactId>
+                            <!-- 显式写版本：Maven 3.9+ 虽能从 dependencyManagement 推断，
+                                 但 IDE 的 POM 检查会对无版本的 path 报错 -->
+                            <version>${lombok.version}</version>
                         </path>
                     </annotationProcessorPaths>
                 </configuration>
