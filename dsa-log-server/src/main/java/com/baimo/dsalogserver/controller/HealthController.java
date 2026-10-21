@@ -39,7 +39,7 @@ public class HealthController {
         body.put("version", version);
         body.put("now", System.currentTimeMillis());
         body.put("zone", TimeUtil.ZONE.getId());
-        return Result.ok(body);
+        return Result.success(body);
     }
 
     private String checkDb() {

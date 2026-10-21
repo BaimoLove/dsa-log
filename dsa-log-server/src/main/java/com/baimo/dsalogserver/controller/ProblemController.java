@@ -24,7 +24,7 @@ public class ProblemController {
 
     @GetMapping
     public Result<PageResult<ProblemVO>> list(@ModelAttribute ProblemQuery query) {
-        return Result.ok(problemService.list(query));
+        return Result.success(problemService.list(query));
     }
 
     /** 必须写在 /{id} 之前语义上更清晰；Spring 会优先匹配字面量路径 */
@@ -35,38 +35,38 @@ public class ProblemController {
         if (vo == null) {
             return ResponseEntity.noContent().build();
         }
-        return ResponseEntity.ok(Result.ok(vo));
+        return ResponseEntity.ok(Result.success(vo));
     }
 
     @GetMapping("/{id}")
     public Result<ProblemVO> get(@PathVariable String id) {
-        return Result.ok(problemService.get(id));
+        return Result.success(problemService.get(id));
     }
 
     @PostMapping
     public Result<ProblemVO> create(@Valid @RequestBody CreateProblemRequest request) {
-        return Result.ok(problemService.create(request));
+        return Result.success(problemService.create(request));
     }
 
     /** 部分更新：字段为 null 不改，清空文本传 ""，tagIds 传 [] 清空标签 */
     @PatchMapping("/{id}")
     public Result<ProblemVO> update(@PathVariable String id, @Valid @RequestBody UpdateProblemRequest request) {
-        return Result.ok(problemService.update(id, request));
+        return Result.success(problemService.update(id, request));
     }
 
     @DeleteMapping("/{id}")
     public Result<Void> remove(@PathVariable String id) {
         problemService.remove(id);
-        return Result.ok();
+        return Result.success();
     }
 
     @PostMapping("/{id}/solved")
     public Result<MarkSolvedVO> markSolved(@PathVariable String id) {
-        return Result.ok(problemService.markSolved(id));
+        return Result.success(problemService.markSolved(id));
     }
 
     @PostMapping("/{id}/unsolved")
     public Result<ProblemVO> markUnsolved(@PathVariable String id) {
-        return Result.ok(problemService.markUnsolved(id));
+        return Result.success(problemService.markUnsolved(id));
     }
 }
