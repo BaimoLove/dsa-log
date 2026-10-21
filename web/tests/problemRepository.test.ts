@@ -48,7 +48,7 @@ describe('题目 CRUD', () => {
     expect(fresh?.tags[0]?.name).toBe('DP')
   })
 
-  it('删除级联清掉 reviews 与 listItems', async () => {
+  it('删除清掉 listItems，但复习流水保留为历史', async () => {
     const p = await repo.create({ title: '三数之和', difficulty: 'medium' })
     await repo.markSolved(p.id)
     await db.problemLists.add({
@@ -66,7 +66,8 @@ describe('题目 CRUD', () => {
 
     await repo.remove(p.id)
     expect(await db.problems.get(p.id)).toBeUndefined()
-    expect(await db.reviews.where('problemId').equals(p.id).count()).toBe(0)
+    // 流水「只增不改」：删题不影响历史，后端 remove 同样保留（M8 对拍对齐）
+    expect(await db.reviews.where('problemId').equals(p.id).count()).toBe(1)
     expect(await db.listItems.where('problemId').equals(p.id).count()).toBe(0)
   })
 })

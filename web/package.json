@@ -5,10 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:http": "vite --mode http",
     "build": "vite build",
     "preview": "vite preview",
     "type-check": "vue-tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:parity": "vitest run tests/httpParity.test.ts --mode parity"
   },
   "dependencies": {
     "@vueuse/core": "^13.0.0",

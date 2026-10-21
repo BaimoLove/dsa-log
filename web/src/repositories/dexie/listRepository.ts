@@ -106,7 +106,10 @@ export const dexieListRepository: ListRepository = {
     if (!list) throw new AppError('NOT_FOUND', '题单不存在')
 
     let affected = 0
-    await db.transaction('rw', db.listItems, async () => {
+    await db.transaction('rw', db.listItems, db.problems, async () => {
+      // 只处理题库里真实存在的题：后端 selectMissingIds 是从 problem 表出发的，
+      // 不存在的 id 会被自然过滤，不会留下悬挂关联（M8 对拍时发现的差异）
+      const known = new Set((await db.problems.toArray()).map((p) => p.id))
       const existing = new Set(
         (await db.listItems.where('listId').equals(listId).toArray()).map((l) => l.problemId),
       )
@@ -114,7 +117,7 @@ export const dexieListRepository: ListRepository = {
       const now = Date.now()
       let offset = 0
       for (const problemId of targets) {
-        if (existing.has(problemId)) continue
+        if (!known.has(problemId) || existing.has(problemId)) continue
         await db.listItems.put({ listId, problemId, sortOrder: tail + offset, addedAt: now })
         offset += 1
       }

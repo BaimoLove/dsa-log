@@ -133,7 +133,7 @@ describe('批量加入题单', () => {
 })
 
 describe('批量删除', () => {
-  it('连带清掉复习流水与题单关联，affected 只算真实存在的行', async () => {
+  it('连带清掉题单关联但保留复习流水，affected 只算真实存在的行', async () => {
     const list = await lists.create({ name: 'DP' })
     const p = await repo.create({ title: '要删的题', difficulty: 'hard' })
     await repo.markSolved(p.id)
@@ -143,7 +143,8 @@ describe('批量删除', () => {
 
     expect(res.affected).toBe(1)
     expect(await repo.getById(p.id)).toBeNull()
-    expect(await db.reviews.count()).toBe(0)
+    // 流水只增不改：删题保留历史，与后端 bulk/delete 行为一致
+    expect(await db.reviews.count()).toBe(1)
     expect(await lists.problemIdsOf(list.id)).toEqual([])
   })
 })

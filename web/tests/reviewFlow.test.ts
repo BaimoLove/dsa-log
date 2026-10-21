@@ -155,7 +155,11 @@ describe('三档评分', () => {
 
   it('历史按时间倒序', async () => {
     const p = await seedSolved()
+    // 每次写入之间隔 2ms：流水按 reviewedAt 排序，同一毫秒内的两条记录
+    // 时间戳完全相同，先后在物理上就无法区分（真实使用里两次操作不可能同毫秒）。
+    await new Promise((resolve) => setTimeout(resolve, 2))
     await reviewRepo.rate(p.id, 'good')
+    await new Promise((resolve) => setTimeout(resolve, 2))
     await reviewRepo.rate(p.id, 'hard')
     const history = await reviewRepo.history(p.id)
     expect(history[0]?.kind).toBe('REVIEW')

@@ -117,10 +117,13 @@ async function getByIdImpl(id: string): Promise<Problem | null> {
   return hydrate(row, await tagMap())
 }
 
-/** 删除即级联：reviews 与 listItems 一并清掉，不留孤儿行 */
+/**
+ * 删除即级联清 listItems，但**不动 reviews**：
+ * 复习流水是「只增不改」的历史事实（DDL 注释里就是这么定的），后端 remove 同样保留。
+ * M8 对拍时这条差异会让「今日已刷」在两种实现下差一条，所以统一到保留。
+ */
 async function removeImpl(id: string): Promise<void> {
-  await db.transaction('rw', db.problems, db.reviews, db.listItems, async () => {
-    await db.reviews.where('problemId').equals(id).delete()
+  await db.transaction('rw', db.problems, db.listItems, async () => {
     await db.listItems.where('problemId').equals(id).delete()
     await db.problems.delete(id)
   })
@@ -214,7 +217,10 @@ export const dexieProblemRepository: ProblemRepository = {
     if (patch.tagIds !== undefined) changes.tagIds = uniqueIds(patch.tagIds)
 
     await db.problems.update(id, changes as never)
-    return (await getByIdImpl(id)) as Problem
+    // 不能回读 getByIdImpl：刚把 archived 改成 1 时它会返回 null，
+    // 而「这次更新本身」必须返回更新后的题目（后端 update 同理，不回读 get）
+    const next = (await db.problems.get(id)) as Problem
+    return hydrate(next, await tagMap())
   },
 
   remove: removeImpl,
@@ -382,14 +388,14 @@ export const dexieProblemRepository: ProblemRepository = {
     if (!targets.length) return { affected: 0 }
 
     let affected = 0
-    await db.transaction('rw', db.problems, db.reviews, db.listItems, async () => {
+    await db.transaction('rw', db.problems, db.listItems, async () => {
       // 先按实际存在的行筛一遍，affected 才等于真正删掉的条数
       const existing: string[] = []
       for (const id of targets) {
         if (await db.problems.get(id)) existing.push(id)
       }
       if (!existing.length) return
-      await db.reviews.where('problemId').anyOf(existing).delete()
+      // 与单条 remove 一致：只清关联，复习流水保留为历史
       await db.listItems.where('problemId').anyOf(existing).delete()
       await db.problems.bulkDelete(existing)
       affected = existing.length
@@ -408,28 +414,5 @@ export const dexieProblemRepository: ProblemRepository = {
       reset: outcome.reset,
       candidateCount: outcome.candidateCount,
     }
-  },
-
-  async upsertMany(items: Problem[]): Promise<{ created: number; updated: number; skipped: number }> {
-    let created = 0
-    let updated = 0
-    let skipped = 0
-    const now = Date.now()
-    await db.transaction('rw', db.problems, db.reviews, db.tags, db.problemLists, db.listItems, async () => {
-      for (const item of items) {
-        const existing = await db.problems.get(item.id)
-        const row = toRow({ ...item, tags: [], updatedAt: item.updatedAt ?? now })
-        if (!existing) {
-          await db.problems.add(row)
-          created += 1
-        } else if ((existing.updatedAt ?? 0) >= (row.updatedAt ?? 0)) {
-          skipped += 1
-        } else {
-          await db.problems.put(row)
-          updated += 1
-        }
-      }
-    })
-    return { created, updated, skipped }
   },
 }

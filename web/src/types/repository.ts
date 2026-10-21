@@ -78,7 +78,6 @@ export interface ProblemRepository {
   bulkRemove(ids: string[]): Promise<BatchResult>
   /** 抽一题：未刷优先 → 未刷重置 → 全库 → 全库重置；题库为空返回 null */
   random(excludeIds: string[]): Promise<RandomPickResult | null>
-  upsertMany(items: Problem[]): Promise<{ created: number; updated: number; skipped: number }>
 }
 
 export interface TagRepository {
