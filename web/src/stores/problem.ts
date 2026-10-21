@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { reactive, ref } from 'vue'
-import { problemRepo } from '@/repositories'
+import { problemRepo, settingsRepo } from '@/repositories'
 import type { BatchResult, CreateProblemInput, ProblemQuery, UpdateProblemInput } from '@/types/repository'
 import type { Problem } from '@/types/models'
 import type { SortOption } from '@/types/enums'
@@ -27,6 +27,7 @@ export const useProblemStore = defineStore('problem', () => {
 
   async function load(): Promise<void> {
     loading.value = true
+    await ensureSize()
     try {
       const res = await problemRepo.list({ ...query, page: page.value, size: size.value })
       items.value = res.items
@@ -74,6 +75,24 @@ export const useProblemStore = defineStore('problem', () => {
 
   function setPage(next: number): void {
     page.value = Math.min(Math.max(1, next), totalPages.value)
+  }
+
+  /**
+   * 每页条数来自设置。只在会话内读一次：HTTP 模式下每次列表请求再取一遍
+   * 设置等于白白多一个往返；用户在设置页改完由 setSize 直接刷新。
+   */
+  let sizeLoaded = false
+  async function ensureSize(): Promise<void> {
+    if (sizeLoaded) return
+    const settings = await settingsRepo.get()
+    size.value = Math.min(100, Math.max(1, settings.pageSize))
+    sizeLoaded = true
+  }
+
+  function setSize(next: number): void {
+    size.value = Math.min(100, Math.max(1, Math.floor(next)))
+    sizeLoaded = true
+    page.value = 1
   }
 
   /** 本地替换一条，用于标记已刷等原地更新，避免整页重拉 */
@@ -173,6 +192,7 @@ export const useProblemStore = defineStore('problem', () => {
     setSort,
     setListId,
     setPage,
+    setSize,
     patchLocal,
     dropLocal,
     fetchById,

@@ -168,3 +168,45 @@ export interface OverviewStats {
 export interface StatsRepository {
   overview(): Promise<OverviewStats>
 }
+
+/** 全量备份的顶层形状。schemaVersion 不匹配一律拒绝，不做「尽力而为」的兼容 */
+export interface BackupPayload {
+  app: 'dsa-log'
+  schemaVersion: number
+  exportedAt: number
+  problems: import('./models').Problem[]
+  tags: import('./models').Tag[]
+  lists: import('./models').ProblemList[]
+  listItems: import('./models').ListItem[]
+  reviews: import('./models').ReviewRecord[]
+  settings: import('./models').AppSettings
+}
+
+export type ImportMode = 'merge' | 'replace'
+
+export interface ImportCounts {
+  created: number
+  updated: number
+  skipped: number
+}
+
+export interface ImportResult {
+  mode: ImportMode
+  problems: ImportCounts
+  tags: ImportCounts
+  lists: ImportCounts
+  listItems: number
+  reviews: number
+}
+
+export interface BackupRepository {
+  /** 全量导出：六张表一起，供「导出 → 换个浏览器导入」整库还原 */
+  exportAll(): Promise<BackupPayload>
+  /** CSV 是给人看的（Excel 打开），时间用 ISO，不复用 epoch 毫秒约定 */
+  exportCsv(): Promise<string>
+  /**
+   * merge：按 id 合并，冲突时以 updatedAt 新的一方为准，同 id 同时间算 skipped
+   * replace：先清空六张表再写，调用方必须先做二次确认
+   */
+  importAll(payload: BackupPayload, mode: ImportMode): Promise<ImportResult>
+}
