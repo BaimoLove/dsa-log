@@ -46,6 +46,7 @@
         </where>
     </sql>
 
+    <!-- 只写业务条件：count 与 LIMIT 由 PaginationInnerInterceptor 生成 -->
     <select id="selectPageList" resultType="com.baimo.dsalogserver.entity.Problem">
         SELECT <include refid="baseColumns"/>
         FROM problem p
@@ -59,12 +60,6 @@
             <when test="q.sort == 'solvedAt_desc'">p.solved_at IS NULL, p.solved_at DESC</when>
             <otherwise>p.updated_at DESC</otherwise>
         </choose>
-        LIMIT #{offset}, #{size}
-    </select>
-
-    <select id="countByQuery" resultType="long">
-        SELECT COUNT(*) FROM problem p
-        <include refid="whereClause"/>
     </select>
 
     <select id="selectForUpdate" resultType="com.baimo.dsalogserver.entity.Problem">

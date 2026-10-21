@@ -1,6 +1,8 @@
 package com.baimo.dsalogserver.service.impl;
 
+import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baimo.dsalogserver.common.BizException;
 import com.baimo.dsalogserver.common.PageResult;
 import com.baimo.dsalogserver.common.TimeUtil;
@@ -54,17 +56,15 @@ public class ProblemServiceImpl implements ProblemService {
     @Override
     public PageResult<ProblemVO> list(ProblemQuery raw) {
         ProblemQuery q = normalize(raw);
-        long total = problemMapper.countByQuery(q);
-        if (total == 0) {
-            return PageResult.empty(q.safePage(), q.safeSize());
-        }
-        int offset = (q.safePage() - 1) * q.safeSize();
-        List<Problem> rows = problemMapper.selectPageList(q, offset, q.safeSize());
+        // count 与 LIMIT 由 PaginationInnerInterceptor 补齐；页码越界时 records 为空、total 仍准确
+        IPage<Problem> page = problemMapper.selectPageList(new Page<>(q.safePage(), q.safeSize()), q);
+
+        List<Problem> rows = page.getRecords();
         Map<String, List<TagRow>> tags = loadTags(rows.stream().map(Problem::getId).toList());
         List<ProblemVO> items = rows.stream()
                 .map(p -> converter.toVO(p, tags.getOrDefault(p.getId(), List.of())))
                 .toList();
-        return PageResult.of(items, total, q.safePage(), q.safeSize());
+        return PageResult.of(items, page.getTotal(), (int) page.getCurrent(), (int) page.getSize());
     }
 
     @Override

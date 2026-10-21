@@ -34,6 +34,14 @@
             <artifactId>mybatis-plus-spring-boot4-starter</artifactId>
             <version>3.5.17</version>
         </dependency>
+        <!-- MP 3.5.9 起把分页插件从 mybatis-plus-extension 拆到了独立模块，
+             starter 不再传递依赖。不加这个 PaginationInnerInterceptor 类根本不存在。
+             只引入 jsqlparser 与 jsqlparser-common，fst/fury/caffeine 在官方 POM 里是 optional。 -->
+        <dependency>
+            <groupId>com.baomidou</groupId>
+            <artifactId>mybatis-plus-jsqlparser</artifactId>
+            <version>3.5.17</version>
+        </dependency>
         <dependency>
             <groupId>com.mysql</groupId>
             <artifactId>mysql-connector-j</artifactId>
