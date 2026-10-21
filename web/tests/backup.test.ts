@@ -163,6 +163,18 @@ describe('导出 → 导入往返', () => {
     await backupRepo.importAll(parsed, 'replace')
     expect((await settingsRepo.get()).dailyReviewLimit).toBe(7)
   })
+
+  it('合并模式即使库里是默认设置也不被文件覆盖（与后端同一条规则）', async () => {
+    const parsed = parseBackup(
+      JSON.stringify({
+        schemaVersion: BACKUP_SCHEMA_VERSION,
+        settings: { dailyReviewLimit: 7, pageSize: 50 },
+      }),
+    )
+    await backupRepo.importAll(parsed, 'merge')
+    expect((await settingsRepo.get()).dailyReviewLimit).toBe(20)
+    expect((await settingsRepo.get()).pageSize).toBe(20)
+  })
 })
 
 describe('备份解析的拒绝路径', () => {

@@ -1,7 +1,7 @@
 import { db } from '@/db'
 import { serializeCsv } from '@/services/backup'
 import { AppError } from '@/types/common'
-import { DEFAULT_SETTINGS, type AppSettings, type Problem } from '@/types/models'
+import type { AppSettings, Problem } from '@/types/models'
 import type {
   BackupPayload,
   BackupRepository,
@@ -162,10 +162,9 @@ export const dexieBackupRepository: BackupRepository = {
           result.reviews += 1
         }
 
-        // 设置只在 merge 且库里还是默认值时采用文件里的；replace 时直接写入
-        const current = await settingsRepo.get()
-        const isDefault = JSON.stringify(current) === JSON.stringify(DEFAULT_SETTINGS)
-        if (mode === 'replace' || isDefault) {
+        // 设置只在 replace 时还原：merge 的语义是「合并数据」，把当前环境的
+        // 偏好一起覆盖掉太意外了。两边（这里与后端 BackupService）同一规则
+        if (mode === 'replace') {
           await db.settings.put({ key: 'app', value: payload.settings as AppSettings })
         }
       },
