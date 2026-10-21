@@ -114,12 +114,18 @@ export const useProblemStore = defineStore('problem', () => {
   }
 
   /**
-   * 四个批量操作统一「先落库、再整页重拉」：批量会改变排序与筛选命中情况，
+   * 批量操作统一「先落库、再整页重拉」：批量会改变排序与筛选命中情况，
    * 局部 patch 容易和 total 对不上，重拉一次最省心（本地库开销可忽略）。
-   * 返回值原样透出 BatchResult，撤销条需要里面的 opId / undoExpiresAt。
+   * 返回值只需要 affected，用于提示「实际改了几道」。
    */
   async function bulkMarkSolved(ids: string[]): Promise<BatchResult> {
     const res = await problemRepo.bulkMarkSolved(ids)
+    await load()
+    return res
+  }
+
+  async function bulkMarkUnsolved(ids: string[]): Promise<BatchResult> {
+    const res = await problemRepo.bulkMarkUnsolved(ids)
     await load()
     return res
   }
@@ -166,6 +172,7 @@ export const useProblemStore = defineStore('problem', () => {
     markSolved,
     markUnsolved,
     bulkMarkSolved,
+    bulkMarkUnsolved,
     bulkAddTags,
     bulkAddToList,
     bulkRemove,

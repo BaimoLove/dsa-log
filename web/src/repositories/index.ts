@@ -6,11 +6,10 @@
  *
  * 视图层与 store 只依赖 types/repository.ts 的接口，不关心这里的实现。
  */
-import type { ListRepository, ProblemRepository, TagRepository, UndoRepository } from '@/types/repository'
+import type { ListRepository, ProblemRepository, TagRepository } from '@/types/repository'
 import { dexieProblemRepository } from './dexie/problemRepository'
 import { dexieTagRepository } from './dexie/tagRepository'
 import { dexieListRepository } from './dexie/listRepository'
-import { dexieUndoRepository } from './dexie/undoRegistry'
 
 export type DataSource = 'local' | 'http'
 
@@ -26,7 +25,6 @@ if (dataSource === 'http') {
 export const problemRepo: ProblemRepository = dexieProblemRepository
 export const tagRepo: TagRepository = dexieTagRepository
 export const listRepo: ListRepository = dexieListRepository
-export const undoRepo: UndoRepository = dexieUndoRepository
 
 export function getDataSourceLabel(): string {
   return dataSource === 'http' ? 'HTTP 接口（Spring Boot + MySQL）' : '本地 IndexedDB（Dexie）'

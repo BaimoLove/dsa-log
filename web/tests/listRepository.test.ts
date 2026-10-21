@@ -3,12 +3,10 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from '@/db'
 import { dexieProblemRepository as repo } from '@/repositories/dexie/problemRepository'
 import { dexieListRepository as lists } from '@/repositories/dexie/listRepository'
-import { resetUndoRegistry } from '@/repositories/dexie/undoRegistry'
 
 beforeEach(async () => {
   await db.open()
   await Promise.all([db.problems.clear(), db.reviews.clear(), db.listItems.clear(), db.problemLists.clear()])
-  resetUndoRegistry()
 })
 
 describe('题单 CRUD', () => {
@@ -70,7 +68,6 @@ describe('题单进度', () => {
 
     expect(first.affected).toBe(1)
     expect(second.affected).toBe(0)
-    expect(second.opId).toBeUndefined()
     expect(await lists.problemIdsOf(l.id)).toEqual([p.id])
   })
 

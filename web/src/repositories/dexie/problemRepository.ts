@@ -2,7 +2,7 @@ import { db } from '@/db'
 import { AppError } from '@/types/common'
 import type { ReviewKind, SortOption } from '@/types/enums'
 import { DIFFICULTY_WEIGHT } from '@/types/enums'
-import type { ListItem, Problem, ReviewRecord, TagBrief } from '@/types/models'
+import type { Problem, ReviewRecord, TagBrief } from '@/types/models'
 import type {
   BatchResult,
   CreateProblemInput,
@@ -17,7 +17,6 @@ import { scheduleOnFirstSolve } from '@/services/reviewScheduler'
 import { pickRandomProblem } from '@/services/randomPicker'
 import { newId, uniqueIds } from '@/utils/id'
 import { dexieListRepository } from './listRepository'
-import { registerUndo } from './undoRegistry'
 
 /**
  * Dexie 版题目仓储。
@@ -284,14 +283,11 @@ export const dexieProblemRepository: ProblemRepository = {
     const targets = uniqueIds(ids)
     if (!targets.length) return { affected: 0 }
 
-    // 快照存变更前的整行：只记「标记了已刷」无法还原 solveCount / reviewStage / nextReviewAt
-    const before: Problem[] = []
-    const reviewIds: string[] = []
+    let affected = 0
     await db.transaction('rw', db.problems, db.reviews, async () => {
       for (const id of targets) {
         const row = await db.problems.get(id)
         if (!row || row.archived === 1) continue
-        before.push({ ...row, tagIds: [...(row.tagIds ?? [])], tags: [] })
         const now = Date.now()
         const firstSolve = row.solvedAt == null
         const sched = firstSolve ? scheduleOnFirstSolve(now) : null
@@ -306,26 +302,49 @@ export const dexieProblemRepository: ProblemRepository = {
           updatedAt: now,
         }
         await db.problems.put(toRow(next))
-        const record = addReview(id, 'MARK_SOLVED', now, {
-          fromStage: row.reviewStage,
-          toStage: next.reviewStage,
-          intervalDays: sched?.intervalDays ?? null,
-          nextReviewAt: next.nextReviewAt,
-        })
-        await db.reviews.add(record)
-        reviewIds.push(record.id)
+        await db.reviews.add(
+          addReview(id, 'MARK_SOLVED', now, {
+            fromStage: row.reviewStage,
+            toStage: next.reviewStage,
+            intervalDays: sched?.intervalDays ?? null,
+            nextReviewAt: next.nextReviewAt,
+          }),
+        )
+        affected += 1
       }
     })
+    return { affected }
+  },
 
-    if (!before.length) return { affected: 0 }
-    const token = registerUndo('批量标记已刷', async () => {
-      await db.transaction('rw', db.problems, db.reviews, async () => {
-        for (const row of before) await db.problems.put(row)
-        await db.reviews.bulkDelete(reviewIds)
-      })
-      return before.length
+  /**
+   * 批量取消已刷：批量已刷的相反操作。
+   * 语义与单条 markUnsolved 一致——回到 todo、清排期，但 solvedAt / solveCount 是历史事实，保留。
+   */
+  async bulkMarkUnsolved(ids: string[]): Promise<BatchResult> {
+    const targets = uniqueIds(ids)
+    if (!targets.length) return { affected: 0 }
+
+    let affected = 0
+    await db.transaction('rw', db.problems, db.reviews, async () => {
+      for (const id of targets) {
+        const row = await db.problems.get(id)
+        if (!row || row.archived === 1 || row.status === 'todo') continue
+        const now = Date.now()
+        const next: Problem = {
+          ...row,
+          status: 'todo',
+          nextReviewAt: null,
+          reviewStage: 0,
+          updatedAt: now,
+        }
+        await db.problems.put(toRow(next))
+        await db.reviews.add(
+          addReview(id, 'MARK_UNSOLVED', now, { fromStage: row.reviewStage, toStage: 0 }),
+        )
+        affected += 1
+      }
     })
-    return { affected: before.length, ...token }
+    return { affected }
   },
 
   async bulkAddTags(ids: string[], tagIds: string[]): Promise<BatchResult> {
@@ -333,35 +352,24 @@ export const dexieProblemRepository: ProblemRepository = {
     const tags = uniqueIds(tagIds)
     if (!targets.length || !tags.length) return { affected: 0 }
 
-    // 快照存旧 tagIds 就够了：本操作只动这一个字段
-    const before: { id: string; tagIds: string[]; updatedAt: number }[] = []
+    let affected = 0
     await db.transaction('rw', db.problems, async () => {
       for (const id of targets) {
         const row = await db.problems.get(id)
         if (!row || row.archived === 1) continue
-        const oldTagIds = [...(row.tagIds ?? [])]
+        const oldTagIds = row.tagIds ?? []
         if (tags.every((t) => oldTagIds.includes(t))) continue // 已经是这个标签，不产生变更
-        before.push({ id, tagIds: oldTagIds, updatedAt: row.updatedAt })
         await db.problems.update(id, {
           tagIds: uniqueIds([...oldTagIds, ...tags]),
           updatedAt: Date.now(),
         })
+        affected += 1
       }
     })
-
-    if (!before.length) return { affected: 0 }
-    const token = registerUndo('批量打标签', async () => {
-      await db.transaction('rw', db.problems, async () => {
-        for (const row of before) {
-          await db.problems.update(row.id, { tagIds: row.tagIds, updatedAt: row.updatedAt })
-        }
-      })
-      return before.length
-    })
-    return { affected: before.length, ...token }
+    return { affected }
   },
 
-  /** 加入题单与题单页的「加入题目」是同一件事，统一由题单仓储实现，撤销快照也只登记一处 */
+  /** 加入题单与题单页的「加入题目」是同一件事，统一由题单仓储实现 */
   bulkAddToList(ids: string[], listId: string): Promise<BatchResult> {
     return dexieListRepository.addProblems(listId, ids)
   },
@@ -370,35 +378,20 @@ export const dexieProblemRepository: ProblemRepository = {
     const targets = uniqueIds(ids)
     if (!targets.length) return { affected: 0 }
 
-    // 删除是物理删，关联行会一起消失，所以快照必须整行留存：题目 + 复习流水 + 题单关联
-    const removed: Problem[] = []
-    const reviews: ReviewRecord[] = []
-    const links: ListItem[] = []
+    let affected = 0
     await db.transaction('rw', db.problems, db.reviews, db.listItems, async () => {
+      // 先按实际存在的行筛一遍，affected 才等于真正删掉的条数
+      const existing: string[] = []
       for (const id of targets) {
-        const row = await db.problems.get(id)
-        if (!row) continue
-        removed.push({ ...row, tagIds: [...(row.tagIds ?? [])], tags: [] })
-        reviews.push(...(await db.reviews.where('problemId').equals(id).toArray()))
-        links.push(...(await db.listItems.where('problemId').equals(id).toArray()))
+        if (await db.problems.get(id)) existing.push(id)
       }
-      const hit = removed.map((r) => r.id)
-      if (!hit.length) return
-      await db.reviews.where('problemId').anyOf(hit).delete()
-      await db.listItems.where('problemId').anyOf(hit).delete()
-      await db.problems.bulkDelete(hit)
+      if (!existing.length) return
+      await db.reviews.where('problemId').anyOf(existing).delete()
+      await db.listItems.where('problemId').anyOf(existing).delete()
+      await db.problems.bulkDelete(existing)
+      affected = existing.length
     })
-
-    if (!removed.length) return { affected: 0 }
-    const token = registerUndo('批量删除', async () => {
-      await db.transaction('rw', db.problems, db.reviews, db.listItems, async () => {
-        for (const row of removed) await db.problems.put(row)
-        for (const row of reviews) await db.reviews.put(row)
-        for (const row of links) await db.listItems.put(row)
-      })
-      return removed.length
-    })
-    return { affected: removed.length, ...token }
+    return { affected }
   },
 
   async random(excludeIds: string[]): Promise<RandomPickResult | null> {

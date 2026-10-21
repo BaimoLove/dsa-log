@@ -9,12 +9,9 @@ export interface Paginated<T> {
   totalPages: number
 }
 
+/** 批量操作只回报实际改动的条数；没有命中任何行时 affected=0 */
 export interface BatchResult {
   affected: number
-  /** 撤销令牌；为空表示本次不可撤销（例如服务端快照写入失败） */
-  opId?: string
-  /** 撤销截止时间（UTC 毫秒），前端倒计时以此为准，不信任本地 +6000 */
-  undoExpiresAt?: number
 }
 
 export interface MarkSolvedResult {
@@ -74,6 +71,8 @@ export interface ProblemRepository {
   markSolved(id: string): Promise<MarkSolvedResult>
   markUnsolved(id: string): Promise<Problem>
   bulkMarkSolved(ids: string[]): Promise<BatchResult>
+  /** 批量取消已刷：状态的相反操作，替代「撤销」。保留 solvedAt / solveCount 历史 */
+  bulkMarkUnsolved(ids: string[]): Promise<BatchResult>
   bulkAddTags(ids: string[], tagIds: string[]): Promise<BatchResult>
   bulkAddToList(ids: string[], listId: string): Promise<BatchResult>
   bulkRemove(ids: string[]): Promise<BatchResult>
@@ -164,8 +163,4 @@ export interface OverviewStats {
   totalProblems: number
   solvedProblems: number
   listProgress: ListProgress[]
-}
-
-export interface UndoRepository {
-  undo(opId: string): Promise<{ affected: number }>
 }

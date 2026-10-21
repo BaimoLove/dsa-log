@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
-import { CheckCheck, Dices, FolderPlus, Plus, Tags, Trash2, X } from 'lucide-vue-next'
+import { CheckCheck, Dices, FolderPlus, Plus, Tags, Trash2, Undo2, X } from 'lucide-vue-next'
 import PageHeader from '@/components/common/PageHeader.vue'
 import BaseButton from '@/components/common/BaseButton.vue'
 import BaseModal from '@/components/common/BaseModal.vue'
@@ -12,7 +12,6 @@ import { useRandomStore } from '@/stores/random'
 import { useTagStore } from '@/stores/tag'
 import { useListStore } from '@/stores/list'
 import { useUiStore } from '@/stores/ui'
-import { useUndoStore } from '@/stores/undo'
 import { toAppError } from '@/types/common'
 import type { Problem } from '@/types/models'
 import type { BatchResult } from '@/types/repository'
@@ -23,7 +22,6 @@ const random = useRandomStore()
 const tagStore = useTagStore()
 const listStore = useListStore()
 const ui = useUiStore()
-const undo = useUndoStore()
 
 const busyId = ref<string | null>(null)
 const removing = ref(false)
@@ -75,14 +73,18 @@ const bulkDeleteOpen = ref(false)
 const pickedTagIds = ref<string[]>([])
 const pickedListId = ref('')
 
-/** 批量收尾：清空选择 + 弹撤销条，撤销成功后重拉当前页 */
+/**
+ * 批量收尾：清空选择 + 按实际改动条数提示。
+ * 列表已由 store 的 bulk* 重拉，这里不碰数据。
+ * 不提供撤销：改错了就用相反操作再发一次（已刷 ↔ 取消已刷）。
+ */
 function afterBulk(res: BatchResult, label: string): void {
   clearSelection()
   if (res.affected === 0) {
     ui.toast('没有实际变更（可能已符合目标状态）', 'info')
     return
   }
-  undo.offer(res, `${label}（${res.affected} 道）`, () => store.load())
+  ui.success(`${label}（${res.affected} 道）`)
 }
 
 async function runBulk(task: () => Promise<BatchResult>, label: string): Promise<void> {
@@ -99,6 +101,11 @@ async function runBulk(task: () => Promise<BatchResult>, label: string): Promise
 
 function bulkSolve(): void {
   void runBulk(() => store.bulkMarkSolved(selectedIds.value), '已标记为已刷')
+}
+
+/** 批量已刷的相反操作：选错或误点就再发一次，不依赖撤销快照 */
+function bulkUnsolve(): void {
+  void runBulk(() => store.bulkMarkUnsolved(selectedIds.value), '已改回未刷')
 }
 
 function openTagPicker(): void {
@@ -247,6 +254,10 @@ async function confirmRemove(): Promise<void> {
       <BaseButton size="sm" variant="secondary" :disabled="bulkBusy" @click="bulkSolve">
         <CheckCheck class="size-3.5" />
         标记已刷
+      </BaseButton>
+      <BaseButton size="sm" variant="secondary" :disabled="bulkBusy" @click="bulkUnsolve">
+        <Undo2 class="size-3.5" />
+        改回未刷
       </BaseButton>
       <BaseButton size="sm" variant="secondary" :disabled="bulkBusy" @click="openTagPicker">
         <Tags class="size-3.5" />
@@ -409,7 +420,7 @@ async function confirmRemove(): Promise<void> {
       <p class="text-sm text-slate-600">
         确定删除选中的 {{ selectedCount }} 道题？复习流水与题单关联会一并清除。
       </p>
-      <p class="mt-2 text-[13px] text-slate-500">删除后 6 秒内可以撤销。</p>
+      <p class="mt-2 text-[13px] text-slate-500">删除不可恢复，请先确认选中的范围。</p>
       <template #footer>
         <BaseButton size="sm" variant="secondary" @click="bulkDeleteOpen = false">取消</BaseButton>
         <BaseButton size="sm" variant="danger" :loading="bulkBusy" @click="confirmBulkRemove">删除</BaseButton>

@@ -15,8 +15,6 @@ export const ERROR_MESSAGE: Record<string, string> = {
   VALIDATION_FAILED: '参数不合法',
   NOT_FOUND: '数据不存在',
   CONFLICT: '数据冲突，请刷新后重试',
-  UNDO_EXPIRED: '撤销已过期，可在列表中手动改回',
-  UNDO_ALREADY_DONE: '该操作已撤销',
   PAYLOAD_TOO_LARGE: '单次操作数量超出上限',
   IMPORT_INVALID: '备份文件格式不正确',
   STORAGE_UNAVAILABLE: '浏览器本地存储不可用',

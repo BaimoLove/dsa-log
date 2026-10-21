@@ -3,7 +3,6 @@ import { AppError } from '@/types/common'
 import type { ProblemList } from '@/types/models'
 import type { BatchResult, ListProgress, ListRepository, ProblemListBasic } from '@/types/repository'
 import { newId, uniqueIds } from '@/utils/id'
-import { registerUndo } from './undoRegistry'
 
 /**
  * 题单仓储（Dexie）。
@@ -106,7 +105,7 @@ export const dexieListRepository: ListRepository = {
     const list = await db.problemLists.get(listId)
     if (!list) throw new AppError('NOT_FOUND', '题单不存在')
 
-    const added: { listId: string; problemId: string }[] = []
+    let affected = 0
     await db.transaction('rw', db.listItems, async () => {
       const existing = new Set(
         (await db.listItems.where('listId').equals(listId).toArray()).map((l) => l.problemId),
@@ -117,19 +116,11 @@ export const dexieListRepository: ListRepository = {
       for (const problemId of targets) {
         if (existing.has(problemId)) continue
         await db.listItems.put({ listId, problemId, sortOrder: tail + offset, addedAt: now })
-        added.push({ listId, problemId })
         offset += 1
       }
+      affected = offset
     })
-
-    if (!added.length) return { affected: 0 }
-    const token = registerUndo('加入题单', async () => {
-      await db.transaction('rw', db.listItems, async () => {
-        for (const link of added) await db.listItems.delete([link.listId, link.problemId])
-      })
-      return added.length
-    })
-    return { affected: added.length, ...token }
+    return { affected }
   },
 
   async removeProblem(listId: string, problemId: string): Promise<void> {
