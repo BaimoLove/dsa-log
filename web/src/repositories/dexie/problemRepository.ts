@@ -226,8 +226,11 @@ export const dexieProblemRepository: ProblemRepository = {
       const row = await requireProblem(id)
       const now = Date.now()
       const firstSolve = row.solvedAt == null
-      // 首次进复习池；重复点「又刷了一次」不改排期，排期只由复习评分推进
-      const sched = firstSolve ? scheduleOnFirstSolve(now) : null
+      // 入池判据是 nextReviewAt 而不是 solvedAt：取消已刷会清排期但保留 solvedAt
+      // 作为历史，沿用「首次」判据会让取消后再标记的题永远进不了复习池。
+      // 首次进池；已在池内的重复刷不改排期，排期只由复习评分推进。
+      const inPool = row.nextReviewAt != null
+      const sched = inPool ? null : scheduleOnFirstSolve(now)
 
       const next: Problem = {
         ...row,
@@ -289,8 +292,8 @@ export const dexieProblemRepository: ProblemRepository = {
         const row = await db.problems.get(id)
         if (!row || row.archived === 1) continue
         const now = Date.now()
-        const firstSolve = row.solvedAt == null
-        const sched = firstSolve ? scheduleOnFirstSolve(now) : null
+        const inPool = row.nextReviewAt != null
+        const sched = inPool ? null : scheduleOnFirstSolve(now)
         const next: Problem = {
           ...row,
           status: 'solved',

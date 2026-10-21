@@ -194,8 +194,13 @@ public class ProblemServiceImpl implements ProblemService {
     }
 
     /**
-     * 标记已刷。首次写 solvedAt 并进复习池（明天到期）；
-     * 重复刷只累加 solveCount、刷新 lastSolvedAt，不动复习排期。
+     * 标记已刷。首次写 solvedAt；不在复习池时重新入池（明天到期）；
+     * 已在池内的重复刷只累加 solveCount、刷新 lastSolvedAt，不动复习排期。
+     *
+     * <p>入池判据是 {@code nextReviewAt == null} 而不是 {@code solvedAt == null}：
+     * 取消已刷会清空排期但保留 solvedAt 作为历史，若沿用「首次」判据，
+     * 取消后再标记已刷将永远不进复习池。两者是两个独立的事实，
+     * 一个决定 solvedAt 写不写，一个决定排期要不要重排。
      */
     @Override
     @Transactional
@@ -206,15 +211,16 @@ public class ProblemServiceImpl implements ProblemService {
         }
         LocalDateTime now = TimeUtil.now();
         boolean firstSolve = p.getSolvedAt() == null;
+        boolean inPool = p.getNextReviewAt() != null;
         int fromStage = p.getReviewStage() == null ? 0 : p.getReviewStage();
 
-        ReviewScheduler.Outcome outcome = firstSolve ? ReviewScheduler.onFirstSolve(now) : null;
+        ReviewScheduler.Outcome outcome = inPool ? null : ReviewScheduler.onFirstSolve(now);
 
         p.setStatus("solved");
         p.setSolvedAt(firstSolve ? now : p.getSolvedAt());
         p.setLastSolvedAt(now);
         p.setSolveCount((p.getSolveCount() == null ? 0 : p.getSolveCount()) + 1);
-        if (firstSolve) {
+        if (!inPool) {
             p.setReviewStage(outcome.stage());
             p.setNextReviewAt(outcome.nextReviewAt());
         }
@@ -237,7 +243,13 @@ public class ProblemServiceImpl implements ProblemService {
         return new MarkSolvedVO(vo, firstSolve, TimeUtil.toMillis(p.getNextReviewAt()));
     }
 
-    /** 取消已刷。solvedAt / solveCount 是历史事实，不抹掉；退出复习池 */
+    /**
+     * 取消已刷。solvedAt / solveCount 是历史事实，不抹掉；退出复习池。
+     *
+     * <p>排期清空走显式 SQL：{@code updateById} 在 MP 默认的
+     * {@code FieldStrategy.NOT_NULL} 下会把 null 字段排除出 SET 子句，
+     * {@code setNextReviewAt(null)} 等于什么都没做，题会一直留在待复习队列里。
+     */
     @Override
     @Transactional
     public ProblemVO markUnsolved(String id) {
@@ -251,11 +263,12 @@ public class ProblemServiceImpl implements ProblemService {
         LocalDateTime now = TimeUtil.now();
         int fromStage = p.getReviewStage() == null ? 0 : p.getReviewStage();
 
+        problemMapper.clearReviewSchedule(id, now);
+        // 同步内存对象，供下面转换 VO；落库以 SQL 为准
         p.setStatus("todo");
         p.setReviewStage(0);
         p.setNextReviewAt(null);
         p.setUpdatedAt(now);
-        problemMapper.updateById(p);
 
         ReviewRecord record = new ReviewRecord();
         record.setId(UUID.randomUUID().toString());
