@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import { RouterLink } from 'vue-router'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { CheckCheck, Dices, FolderPlus, Plus, Tags, Trash2, Undo2, X } from 'lucide-vue-next'
 import PageHeader from '@/components/common/PageHeader.vue'
 import BaseButton from '@/components/common/BaseButton.vue'
 import BaseModal from '@/components/common/BaseModal.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
+import ProblemFilterBar from '@/components/problem/ProblemFilterBar.vue'
 import ProblemRow from '@/components/problem/ProblemRow.vue'
 import { useProblemStore } from '@/stores/problem'
 import { useRandomStore } from '@/stores/random'
@@ -16,7 +17,11 @@ import { toAppError } from '@/types/common'
 import type { Problem } from '@/types/models'
 import type { BatchResult } from '@/types/repository'
 import type { ProblemStatus } from '@/types/enums'
+import { emptyFilter, parseProblemFilter, serializeProblemFilter } from '@/utils/problemQuery'
+import type { ProblemFilter } from '@/utils/problemQuery'
 
+const route = useRoute()
+const router = useRouter()
 const store = useProblemStore()
 const random = useRandomStore()
 const tagStore = useTagStore()
@@ -26,6 +31,7 @@ const ui = useUiStore()
 const busyId = ref<string | null>(null)
 const removing = ref(false)
 const pendingDelete = ref<Problem | null>(null)
+const filterBar = ref<InstanceType<typeof ProblemFilterBar> | null>(null)
 
 const TABS: { key: string; label: string; statuses: ProblemStatus[] }[] = [
   { key: 'all', label: '全部', statuses: [] },
@@ -33,7 +39,32 @@ const TABS: { key: string; label: string; statuses: ProblemStatus[] }[] = [
   { key: 'solved', label: '已刷', statuses: ['solved'] },
 ]
 
-const activeTab = ref('all')
+/** URL 是筛选的唯一真相源；store 只做镜像，供 load() 使用 */
+const filter = computed<ProblemFilter>(() => parseProblemFilter(route.query))
+
+const activeTab = computed(() => {
+  const statuses = filter.value.statuses
+  return statuses.length === 1 ? statuses[0] : 'all'
+})
+
+/**
+ * 是否有会「筛掉结果」的条件。排序只改顺序，不算——否则空库时
+ * 会因为改过排序而显示「这个筛选下没有题目」，误导。
+ */
+const filtering = computed(() => {
+  const q = filter.value
+  return q.statuses.length > 0 || Boolean(q.keyword) || q.difficulties.length > 0 || q.tagIds.length > 0
+})
+
+/** 改筛选一律回到第 1 页，否则会停在旧页码上看空结果 */
+function patchFilter(patch: Partial<ProblemFilter>): void {
+  const next: ProblemFilter = { ...filter.value, ...patch }
+  void router.replace({ name: 'problems', query: serializeProblemFilter(next) })
+}
+
+function clearFilters(): void {
+  void router.replace({ name: 'problems', query: serializeProblemFilter(emptyFilter()) })
+}
 
 /* ---------------- 批量选择 ---------------- */
 
@@ -143,10 +174,7 @@ async function confirmBulkRemove(): Promise<void> {
 function switchTab(key: string): void {
   const tab = TABS.find((t) => t.key === key)
   if (!tab) return
-  activeTab.value = key
-  clearSelection()
-  store.setStatuses(tab.statuses)
-  void store.load()
+  patchFilter({ statuses: tab.statuses })
 }
 
 function prevPage(): void {
@@ -168,11 +196,41 @@ const rangeText = computed(() => {
   return `第 ${from}–${to} 道 / 共 ${store.total} 道`
 })
 
+/**
+ * 交互只写 URL，这里统一把 URL 落到 store 再查询：刷新、前进/后退、
+ * 手改地址、点筛选按钮走的都是同一条路径，不会出现两套状态打架。
+ * 页码不进 URL（属于浏览位置而非筛选），所以每次筛选变化都回到第 1 页。
+ */
+watch(
+  () => route.fullPath,
+  () => {
+    if (route.name !== 'problems') return
+    store.applyFilter(filter.value)
+    // 从题单详情页返回时可能残留 listId 筛选，这里复位
+    store.setListId(undefined)
+    store.setPage(1)
+    clearSelection()
+    void store.load()
+  },
+  { immediate: true },
+)
+
+/** Ctrl+K 在别的页面按下时，导航完成后再聚焦搜索框 */
+watch(
+  () => ui.pendingSearchFocus,
+  async (pending) => {
+    if (!pending) return
+    await nextTick()
+    if (!filterBar.value) return
+    filterBar.value.focus()
+    ui.consumeSearchFocus()
+  },
+  { immediate: true },
+)
+
 onMounted(async () => {
-  clearSelection()
-  // 从题单详情页返回时可能残留 listId 筛选，这里复位
-  store.setListId(undefined)
-  await Promise.all([store.load(), tagStore.load(), listStore.load()])
+  // 题目列表由上面的 watch 负责，这里只补筛选条要用的标签
+  await Promise.all([tagStore.load(), listStore.load()])
 })
 
 async function solve(id: string): Promise<void> {
@@ -245,6 +303,17 @@ async function confirmRemove(): Promise<void> {
       <span class="text-[12px] text-slate-400">{{ rangeText }}</span>
     </div>
 
+    <ProblemFilterBar
+      ref="filterBar"
+      :keyword="filter.keyword"
+      :difficulties="filter.difficulties"
+      :tag-ids="filter.tagIds"
+      :sort="filter.sort"
+      :tags="tagStore.tags"
+      @change="patchFilter"
+      @clear="clearFilters"
+    />
+
     <!-- 选中后浮现的操作条：只放批量动作，避免和单条按钮挤在一起 -->
     <div
       v-if="selectedCount > 0"
@@ -286,13 +355,15 @@ async function confirmRemove(): Promise<void> {
 
       <EmptyState
         v-else-if="store.items.length === 0"
-        :title="store.total === 0 ? '还没有题目' : '这个筛选下没有题目'"
-        :description="store.total === 0 ? '先录一道题，随手记下题名、难度和标签就够了' : '换个筛选条件试试'"
+        :title="filtering ? '这个筛选下没有题目' : '还没有题目'"
+        :description="
+          filtering ? '放宽或清空筛选条件试试，也可以直接新建一道' : '先录一道题，随手记下题名、难度和标签就够了'
+        "
       >
-        <RouterLink v-if="store.total === 0" to="/problems/new">
+        <BaseButton v-if="filtering" size="sm" variant="secondary" @click="clearFilters">清空筛选</BaseButton>
+        <RouterLink v-else to="/problems/new">
           <BaseButton variant="primary" size="sm">新建第一道题</BaseButton>
         </RouterLink>
-        <BaseButton v-else size="sm" variant="secondary" @click="switchTab('all')">看全部</BaseButton>
       </EmptyState>
 
       <template v-else>

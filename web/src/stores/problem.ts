@@ -4,6 +4,8 @@ import { problemRepo } from '@/repositories'
 import type { BatchResult, CreateProblemInput, ProblemQuery, UpdateProblemInput } from '@/types/repository'
 import type { Problem } from '@/types/models'
 import type { SortOption } from '@/types/enums'
+import { emptyFilter } from '@/utils/problemQuery'
+import type { ProblemFilter } from '@/utils/problemQuery'
 
 export const useProblemStore = defineStore('problem', () => {
   const items = ref<Problem[]>([])
@@ -14,7 +16,7 @@ export const useProblemStore = defineStore('problem', () => {
   const loading = ref(false)
   const ready = ref(false)
 
-  /** 只保留 M2 需要的三个维度；M4 再扩到完整筛选 */
+  /** 题库页的筛选镜像 URL；题单详情页只借用 listId，不碰其余维度 */
   const query = reactive<ProblemQuery>({
     keyword: '',
     statuses: [],
@@ -41,13 +43,21 @@ export const useProblemStore = defineStore('problem', () => {
     }
   }
 
-  function setStatuses(statuses: ProblemQuery['statuses']): void {
-    query.statuses = statuses ?? []
-    page.value = 1
+  /**
+   * 整体替换筛选条件。题库页把 URL 解析成 ProblemFilter 后一次灌进来，
+   * 避免四个 setter 分别调一次 load 造成连续重查。
+   */
+  function applyFilter(filter: ProblemFilter): void {
+    query.keyword = filter.keyword
+    query.statuses = [...filter.statuses]
+    query.difficulties = [...filter.difficulties]
+    query.tagIds = [...filter.tagIds]
+    query.sort = filter.sort
   }
 
-  function setKeyword(keyword: string): void {
-    query.keyword = keyword
+  /** 只清筛选维度，保留 listId——题单详情页进入时要用它做范围限定 */
+  function resetFilters(): void {
+    applyFilter(emptyFilter())
     page.value = 1
   }
 
@@ -158,8 +168,8 @@ export const useProblemStore = defineStore('problem', () => {
     ready,
     query,
     load,
-    setStatuses,
-    setKeyword,
+    applyFilter,
+    resetFilters,
     setSort,
     setListId,
     setPage,

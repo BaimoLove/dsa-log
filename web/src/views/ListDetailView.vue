@@ -37,6 +37,8 @@ async function refresh(): Promise<void> {
 
 onMounted(async () => {
   store.setListId(listId.value)
+  // 题库页的筛选（关键词/难度/标签）不该带进题单详情，进来看完整题单
+  store.resetFilters()
   await refresh()
 })
 
@@ -44,6 +46,7 @@ onMounted(async () => {
 watch(listId, async (id) => {
   if (!id) return
   store.setListId(id)
+  store.resetFilters()
   await refresh()
 })
 

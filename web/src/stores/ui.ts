@@ -16,6 +16,9 @@ let seq = 0
 export const useUiStore = defineStore('ui', () => {
   const toasts = ref<ToastItem[]>([])
   const drawerOpen = ref(false)
+  const shortcutsOpen = ref(false)
+  /** Ctrl+K 在别的页面按下时，先导航再置位；题库页消费后置回 false */
+  const pendingSearchFocus = ref(false)
 
   function dismiss(id: number) {
     toasts.value = toasts.value.filter((t) => t.id !== id)
@@ -58,5 +61,39 @@ export const useUiStore = defineStore('ui', () => {
     drawerOpen.value = !drawerOpen.value
   }
 
-  return { toasts, drawerOpen, toast, success, error, dismiss, openDrawer, closeDrawer, toggleDrawer }
+  function requestSearchFocus() {
+    pendingSearchFocus.value = true
+  }
+
+  /** 消费式读取：拿到 true 就顺手清掉，避免下次进入题库页莫名聚焦 */
+  function consumeSearchFocus(): boolean {
+    if (!pendingSearchFocus.value) return false
+    pendingSearchFocus.value = false
+    return true
+  }
+
+  function openShortcuts() {
+    shortcutsOpen.value = true
+  }
+  function closeShortcuts() {
+    shortcutsOpen.value = false
+  }
+
+  return {
+    toasts,
+    drawerOpen,
+    shortcutsOpen,
+    pendingSearchFocus,
+    toast,
+    success,
+    error,
+    dismiss,
+    openDrawer,
+    closeDrawer,
+    toggleDrawer,
+    requestSearchFocus,
+    consumeSearchFocus,
+    openShortcuts,
+    closeShortcuts,
+  }
 })

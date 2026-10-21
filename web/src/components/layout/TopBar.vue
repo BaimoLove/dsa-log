@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
-import { Dices, Menu, TriangleAlert } from 'lucide-vue-next'
+import { Dices, Keyboard, Menu, TriangleAlert } from 'lucide-vue-next'
 import BaseButton from '@/components/common/BaseButton.vue'
 import { useUiStore } from '@/stores/ui'
 import { useRandomStore } from '@/stores/random'
@@ -38,7 +38,10 @@ const degraded = computed(() => !storageState.available)
         <TriangleAlert class="size-3.5" />
         <span class="hidden sm:inline">存储不可用，当前为只读</span>
       </div>
-      <BaseButton size="sm" variant="secondary" title="随机抽一道题" @click="random.openModal()">
+      <BaseButton size="sm" variant="ghost" title="快捷键（?）" @click="ui.openShortcuts()">
+        <Keyboard class="size-4" />
+      </BaseButton>
+      <BaseButton size="sm" variant="secondary" title="随机抽一道题（R）" @click="random.openModal()">
         <Dices class="size-4" />
         <span class="hidden sm:inline">随机一题</span>
       </BaseButton>
