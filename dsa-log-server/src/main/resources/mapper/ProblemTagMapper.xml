@@ -18,8 +18,22 @@
         <foreach collection="tagIds" item="tagId" separator=",">(#{problemId}, #{tagId})</foreach>
     </insert>
 
+    <!-- 嵌套 foreach：外层按题展开，内层按标签展开，括号内是两个占位符 -->
+    <insert id="insertIgnoreBatch">
+        INSERT IGNORE INTO problem_tag (problem_id, tag_id)
+        VALUES
+        <foreach collection="problemIds" item="problemId" separator=",">
+            <foreach collection="tagIds" item="tagId" separator=",">(#{problemId}, #{tagId})</foreach>
+        </foreach>
+    </insert>
+
     <delete id="deleteByProblemId">
         DELETE FROM problem_tag WHERE problem_id = #{problemId}
+    </delete>
+
+    <delete id="deleteByProblemIds">
+        DELETE FROM problem_tag WHERE problem_id IN
+        <foreach collection="problemIds" item="id" open="(" separator="," close=")">#{id}</foreach>
     </delete>
 
     <delete id="deleteByTagId">

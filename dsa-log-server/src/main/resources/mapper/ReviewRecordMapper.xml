@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.baimo.dsalogserver.mapper.ReviewRecordMapper">
+
+    <insert id="insertBatch">
+        INSERT INTO review_record
+            (id, problem_id, kind, rating, from_stage, to_stage, interval_days, next_review_at, reviewed_at, created_at)
+        VALUES
+        <foreach collection="records" item="r" separator=",">
+            (#{r.id}, #{r.problemId}, #{r.kind}, #{r.rating}, #{r.fromStage}, #{r.toStage},
+             #{r.intervalDays}, #{r.nextReviewAt}, #{r.reviewedAt}, #{r.createdAt})
+        </foreach>
+    </insert>
+
+</mapper>

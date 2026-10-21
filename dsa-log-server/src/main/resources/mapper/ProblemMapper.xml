@@ -69,6 +69,34 @@
         FOR UPDATE
     </select>
 
+    <!-- ORDER BY id 保证加锁顺序一致，两个批次不会交叉等待 -->
+    <select id="selectByIdsForUpdate" resultType="com.baimo.dsalogserver.entity.Problem">
+        SELECT <include refid="baseColumns"/>
+        FROM problem p
+        WHERE p.deleted = 0 AND p.id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+        ORDER BY p.id
+        FOR UPDATE
+    </select>
+
+    <select id="selectExistingIds" resultType="string">
+        SELECT p.id FROM problem p
+        WHERE p.deleted = 0 AND p.id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+    </select>
+
+    <!-- 子查询统计「这题已命中几个目标标签」，小于目标数说明还缺，需要变更 -->
+    <select id="selectIdsNeedTags" resultType="string">
+        SELECT p.id FROM problem p
+        WHERE p.deleted = 0 AND p.id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+        AND (
+            SELECT COUNT(DISTINCT pt.tag_id) FROM problem_tag pt
+            WHERE pt.problem_id = p.id AND pt.tag_id IN
+            <foreach collection="tagIds" item="t" open="(" separator="," close=")">#{t}</foreach>
+        ) &lt; #{tagCount}
+    </select>
+
     <select id="selectRandomOne" resultType="com.baimo.dsalogserver.entity.Problem">
         SELECT <include refid="baseColumns"/>
         FROM problem p
@@ -84,16 +112,49 @@
         LIMIT 1
     </select>
 
+    <!--
+      左右求值顺序有讲究：MySQL 单表 UPDATE 的 SET 子句从左到右赋值，
+      review_stage 依赖 next_review_at 的旧值，必须写在 next_review_at 之前，
+      否则判据恒为假、阶段永远不重置。
+    -->
     <update id="markSolvedBatch">
-        UPDATE problem p
-        SET p.status = 'solved',
-            p.last_solved_at = NOW(3),
-            p.solve_count = p.solve_count + 1,
-            p.solved_at = IFNULL(p.solved_at, NOW(3)),
-            p.next_review_at = IFNULL(p.next_review_at, DATE_ADD(NOW(3), INTERVAL 1 DAY)),
-            p.updated_at = NOW(3)
-        WHERE p.deleted = 0 AND p.id IN
+        UPDATE problem
+        SET status = 'solved',
+            review_stage = IF(next_review_at IS NULL, 0, review_stage),
+            next_review_at = IFNULL(next_review_at, #{firstReviewAt}),
+            solved_at = IFNULL(solved_at, #{now}),
+            last_solved_at = #{now},
+            solve_count = solve_count + 1,
+            updated_at = #{now}
+        WHERE deleted = 0 AND id IN
         <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+    </update>
+
+    <update id="markUnsolvedBatch">
+        UPDATE problem
+        SET status = 'todo', review_stage = 0, next_review_at = NULL, updated_at = #{now}
+        WHERE deleted = 0 AND status = 'solved' AND id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+    </update>
+
+    <update id="logicalDeleteBatch">
+        UPDATE problem
+        SET deleted = 1, updated_at = #{now}
+        WHERE deleted = 0 AND id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+    </update>
+
+    <update id="touchBatch">
+        UPDATE problem
+        SET updated_at = #{now}
+        WHERE deleted = 0 AND id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+    </update>
+
+    <update id="clearReviewSchedule">
+        UPDATE problem
+        SET status = 'todo', review_stage = 0, next_review_at = NULL, updated_at = #{now}
+        WHERE id = #{id} AND deleted = 0
     </update>
 
 </mapper>

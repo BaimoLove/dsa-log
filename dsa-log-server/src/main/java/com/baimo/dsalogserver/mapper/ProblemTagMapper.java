@@ -15,7 +15,14 @@ public interface ProblemTagMapper {
     /** 幂等挂标签 */
     int insertIgnore(@Param("problemId") String problemId, @Param("tagIds") List<String> tagIds);
 
+    /** 批量幂等挂标签：题 × 标签的笛卡尔积，已存在的关联由 IGNORE 跳过 */
+    int insertIgnoreBatch(@Param("problemIds") List<String> problemIds,
+                          @Param("tagIds") List<String> tagIds);
+
     int deleteByProblemId(@Param("problemId") String problemId);
+
+    /** 批量删关联，批量删除时一次清掉，不逐题往返 */
+    int deleteByProblemIds(@Param("problemIds") List<String> problemIds);
 
     int deleteByTagId(@Param("tagId") String tagId);
 

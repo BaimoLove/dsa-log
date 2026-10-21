@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.baimo.dsalogserver.mapper.ProblemListItemMapper">
+
+    <delete id="deleteByProblemId">
+        DELETE FROM problem_list_item WHERE problem_id = #{problemId}
+    </delete>
+
+    <delete id="deleteByProblemIds">
+        DELETE FROM problem_list_item WHERE problem_id IN
+        <foreach collection="problemIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+    </delete>
+
+    <select id="nextSortOrder" resultType="int">
+        SELECT IFNULL(MAX(sort_order) + 1, 0) FROM problem_list_item WHERE list_id = #{listId}
+    </select>
+
+    <select id="selectMissingIds" resultType="string">
+        SELECT p.id FROM problem p
+        WHERE p.deleted = 0 AND p.id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+        AND p.id NOT IN (
+            SELECT li.problem_id FROM problem_list_item li WHERE li.list_id = #{listId}
+        )
+    </select>
+
+    <!-- sort_order 用「起始序号 + 下标」连续分配，只对缺失的题插行，不会有空洞 -->
+    <insert id="insertIgnoreBatch">
+        INSERT IGNORE INTO problem_list_item (list_id, problem_id, sort_order, created_at)
+        VALUES
+        <foreach collection="problemIds" item="problemId" index="i" separator=",">
+            (#{listId}, #{problemId}, #{startOrder} + #{i}, NOW(3))
+        </foreach>
+    </insert>
+
+</mapper>

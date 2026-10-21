@@ -22,7 +22,8 @@ public class BizException extends RuntimeException {
     }
 
     public static BizException notFound(String what) {
-        return new BizException(ErrorCode.NOT_FOUND, what + " 不存在");
+        // 中文不空格：消息直接给用户看，拼接处留空格会变成「题单 不存在」
+        return new BizException(ErrorCode.NOT_FOUND, what + "不存在");
     }
 
     public static BizException conflict(String message) {
@@ -31,5 +32,10 @@ public class BizException extends RuntimeException {
 
     public static BizException invalid(String message) {
         return new BizException(ErrorCode.VALIDATION_FAILED, message);
+    }
+
+    /** 单次操作的数据量超限，用 413 与「参数格式不对」的 400 区分开 */
+    public static BizException payloadTooLarge(String message) {
+        return new BizException(ErrorCode.PAYLOAD_TOO_LARGE, message);
     }
 }
