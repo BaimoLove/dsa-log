@@ -27,10 +27,11 @@ CREATE TABLE IF NOT EXISTS `problem` (
   `updated_at`     DATETIME(3)      NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
   `deleted`        TINYINT UNSIGNED NOT NULL DEFAULT 0          COMMENT '0 正常 / 1 已删',
   PRIMARY KEY (`id`),
-  KEY `idx_due`         (`deleted`,`status`,`next_review_at`),
-  KEY `idx_diff_status` (`deleted`,`difficulty`,`status`),
-  KEY `idx_updated`     (`deleted`,`updated_at`),
-  KEY `idx_next_review` (`next_review_at`)
+  -- 只保留两条有明确访问路径的索引，其余筛选项交给回表过滤（数据量小，收益为负）
+  -- idx_due：待复习队列，deleted 与 status 是等值前缀，next_review_at 是范围列（必须在最后）
+  -- idx_updated：列表默认排序，deleted 等值 + updated_at 有序，可直接满足 ORDER BY ... LIMIT
+  KEY `idx_due`     (`deleted`,`status`,`next_review_at`),
+  KEY `idx_updated` (`deleted`,`updated_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='题目';
 
 -- 2. 标签（物理删除，名称唯一）
