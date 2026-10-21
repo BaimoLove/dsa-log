@@ -26,6 +26,10 @@ CREATE TABLE IF NOT EXISTS `problem` (
   -- M6.5 变更：前端 Problem 模型一直有 lastReviewedAt，后端漏了这一列。已建过库的不用重建，执行：
   --   ALTER TABLE `problem` ADD COLUMN `last_reviewed_at` DATETIME(3) NULL COMMENT '最近一次复习评分时间' AFTER `next_review_at`;
   `last_reviewed_at` DATETIME(3)    NULL                       COMMENT '最近一次复习评分时间',
+  -- M8 变更：前端 Problem 一直有 archived（题库列表按 0/1 精确筛、随机与统计都排除归档），
+  -- 后端从 M2.5 到 M7.5 都没有这一列——M8 双跑对拍必须先补齐。已建过库的执行：
+  --   ALTER TABLE `problem` ADD COLUMN `archived` TINYINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '0 正常 / 1 已归档' AFTER `last_reviewed_at`;
+  `archived`       TINYINT UNSIGNED NOT NULL DEFAULT 0          COMMENT '0 正常 / 1 已归档（不参与随机、统计、待复习）',
   `created_at`     DATETIME(3)      NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   `updated_at`     DATETIME(3)      NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
   `deleted`        TINYINT UNSIGNED NOT NULL DEFAULT 0          COMMENT '0 正常 / 1 已删',

@@ -400,6 +400,8 @@ public class BackupServiceImpl implements BackupService {
         p.setReviewStage(vo.getReviewStage() == null ? 0 : Math.min(4, Math.max(0, vo.getReviewStage())));
         p.setNextReviewAt(TimeUtil.fromMillis(vo.getNextReviewAt()));
         p.setLastReviewedAt(TimeUtil.fromMillis(vo.getLastReviewedAt()));
+        // 老备份文件里没有 archived（M8 才有这一列），缺省按未归档；只认 1
+        p.setArchived(vo.getArchived() != null && vo.getArchived() == 1 ? 1 : 0);
         p.setCreatedAt(TimeUtil.fromMillis(vo.getCreatedAt()) == null ? now : TimeUtil.fromMillis(vo.getCreatedAt()));
         p.setUpdatedAt(TimeUtil.fromMillis(vo.getUpdatedAt()) == null ? p.getCreatedAt() : TimeUtil.fromMillis(vo.getUpdatedAt()));
         // 导出的都是存活行；导入一律当活行处理（replace 已经把库清空）

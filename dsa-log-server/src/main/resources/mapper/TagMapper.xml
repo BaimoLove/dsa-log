@@ -8,12 +8,13 @@
       p.deleted = 0 必须写在 ON 上：写进 WHERE 会把 LEFT JOIN 退化成 INNER JOIN，
       没有被引用的标签会直接从列表里消失。
       COUNT(p.id) 而非 COUNT(*)：逻辑删的题会留下一行 p.id 为 NULL 的占位行。
+      archived = 0 同样写在 ON 上：归档题不计入使用数（前端 Dexie 侧也是跳过的）。
     -->
     <sql id="usageColumns">
         SELECT t.id, t.name, t.color, t.created_at AS createdAt, COUNT(p.id) AS usageCount
         FROM tag t
         LEFT JOIN problem_tag pt ON pt.tag_id = t.id
-        LEFT JOIN problem p ON p.id = pt.problem_id AND p.deleted = 0
+        LEFT JOIN problem p ON p.id = pt.problem_id AND p.deleted = 0 AND p.archived = 0
     </sql>
 
     <select id="selectWithUsage" resultType="com.baimo.dsalogserver.vo.TagUsageRow">

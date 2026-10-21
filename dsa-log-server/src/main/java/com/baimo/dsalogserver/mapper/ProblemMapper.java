@@ -27,6 +27,13 @@ public interface ProblemMapper extends BaseMapper<Problem> {
                             @Param("excludeIds") List<String> excludeIds);
 
     /**
+     * 随机抽题的候选数，与 {@link #selectRandomOne} 同一套条件——两处条件必须写成一样的，
+     * 否则会出现「说从 3 道里抽、实际从 5 道里抽」。只用于回显提示，不参与选行。
+     */
+    long countCandidates(@Param("status") String status,
+                         @Param("excludeIds") List<String> excludeIds);
+
+    /**
      * 待复习队列：status='solved' 且 next_review_at &lt;= now，按到期时间升序。
      * 判据刻意不用「今天 23:59」，否则早上到期的题在中午看不到。
      */

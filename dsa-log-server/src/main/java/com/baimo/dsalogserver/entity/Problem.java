@@ -39,6 +39,13 @@ public class Problem {
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
+    /**
+     * 0 正常 / 1 已归档。归档与逻辑删除是两件事：
+     * 归档的题还在库里、还能在「已归档」筛选项里看到，只是不参与随机、统计与待复习。
+     * 前端从 M2 起就有这个字段，后端 M8 才补齐。
+     */
+    private Integer archived;
+
     @TableLogic
     private Integer deleted;
 }

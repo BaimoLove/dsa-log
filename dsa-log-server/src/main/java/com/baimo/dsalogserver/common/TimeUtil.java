@@ -17,8 +17,16 @@ public final class TimeUtil {
     private TimeUtil() {
     }
 
+    /**
+     * 当前时间，截断到毫秒。
+     *
+     * <p>这里原本写的是 {@code withNano(0)}——它把毫秒也一起清零了，于是同一秒内的
+     * 多次写入时间戳完全同值：列表按 updated_at / created_at 排序时并列，MySQL 返回
+     * 顺序不确定；备份 merge 按 updatedAt 比新旧也会被判成「同时」。
+     * DATETIME(3) 本来就存到毫秒，截掉毫秒没有任何好处。
+     */
     public static LocalDateTime now() {
-        return LocalDateTime.now(ZONE).withNano(0);
+        return LocalDateTime.now(ZONE).truncatedTo(java.time.temporal.ChronoUnit.MILLIS);
     }
 
     public static Long toMillis(LocalDateTime time) {

@@ -6,6 +6,7 @@ import com.baimo.dsalogserver.dto.ProblemQuery;
 import com.baimo.dsalogserver.dto.UpdateProblemRequest;
 import com.baimo.dsalogserver.vo.MarkSolvedVO;
 import com.baimo.dsalogserver.vo.ProblemVO;
+import com.baimo.dsalogserver.vo.RandomPickVO;
 
 import java.util.List;
 
@@ -29,8 +30,12 @@ public interface ProblemService {
     /** 题目详情，不存在抛 notFound */
     ProblemVO get(String id);
 
-    /** 随机一题。pool=all 表示全库，excludeIds 为本轮已抽过的题；题库为空返回 null */
-    ProblemVO random(String pool, List<String> excludeIds);
+    /**
+     * 随机一题。pool=all 表示直接跳过未刷池，excludeIds 为本轮已抽过的题；
+     * 题库为空返回 null。返回体除题目本身外还带 pool/reset/candidateCount，
+     * 因为「这次用的是哪个池子」只有四级级联的执行者知道。
+     */
+    RandomPickVO random(String pool, List<String> excludeIds);
 
     /** 新建题目，status 恒为 todo，难度缺省 medium */
     ProblemVO create(CreateProblemRequest request);

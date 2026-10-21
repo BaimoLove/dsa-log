@@ -26,10 +26,11 @@
         SUM(CASE WHEN p.status = 'solved' THEN 1 ELSE 0 END) AS solved
     </sql>
 
+    <!-- archived = 0 必须写在 ON 上：写进 WHERE 会让空题单直接消失 -->
     <sql id="progressJoins">
         FROM problem_list l
         LEFT JOIN problem_list_item li ON li.list_id = l.id
-        LEFT JOIN problem p ON p.id = li.problem_id AND p.deleted = 0
+        LEFT JOIN problem p ON p.id = li.problem_id AND p.deleted = 0 AND p.archived = 0
     </sql>
 
     <!-- 按主键分组，其余列函数依赖于主键；仍显式列全，不依赖 ONLY_FULL_GROUP_BY 的宽容 -->

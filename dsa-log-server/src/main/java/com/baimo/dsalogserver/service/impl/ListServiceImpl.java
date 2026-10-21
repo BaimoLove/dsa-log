@@ -24,7 +24,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
 
@@ -144,18 +146,24 @@ public class ListServiceImpl implements ListService {
         String target = requireAlive(listId);
         List<String> ids = BatchIds.normalize(problemIds);
 
-        // 先按库里真实存在的题筛一遍，affected 才等于真正新增的题数
-        List<String> existing = problemMapper.selectExistingIds(ids);
-        if (existing.isEmpty()) {
+        // 两条 SQL 都只用来做集合判断，**不拿它们的返回顺序**：
+        // MySQL 没有 ORDER BY 时返回顺序由执行计划决定，如果直接拿 selectMissingIds
+        // 的结果去分配 sort_order，题单里的先后就变成随机的（M8 对拍发现的差异）。
+        // 这里按入参顺序过滤，与 Dexie 侧「按 targets 顺序依次 put」保持一致。
+        Set<String> alive = new HashSet<>(problemMapper.selectExistingIds(ids));
+        if (alive.isEmpty()) {
             return new BatchVO(0);
         }
-        List<String> missing = problemListItemMapper.selectMissingIds(target, existing);
-        if (missing.isEmpty()) {
+        Set<String> missing = new HashSet<>(problemListItemMapper.selectMissingIds(target, ids));
+        List<String> ordered = ids.stream()
+                .filter(id -> alive.contains(id) && missing.contains(id))
+                .toList();
+        if (ordered.isEmpty()) {
             return new BatchVO(0);
         }
         int startOrder = problemListItemMapper.nextSortOrder(target);
-        problemListItemMapper.insertIgnoreBatch(target, missing, startOrder);
-        return new BatchVO(missing.size());
+        problemListItemMapper.insertIgnoreBatch(target, ordered, startOrder);
+        return new BatchVO(ordered.size());
     }
 
     @Override
@@ -170,6 +178,18 @@ public class ListServiceImpl implements ListService {
             // 直接给完整消息：notFound(what) 会拼成「该题不在此题单内不存在」
             throw new BizException(ErrorCode.NOT_FOUND, "该题不在此题单内");
         }
+    }
+
+    /**
+     * 题单成员 id 列表。刻意不校验题单是否存在、也不过滤归档：
+     * Dexie 侧就是「关联表里有什么就返回什么」，题单不存在得到空数组而不是 404。
+     */
+    @Override
+    public List<String> problemIds(String listId) {
+        if (listId == null || listId.trim().isEmpty()) {
+            return List.of();
+        }
+        return problemListItemMapper.selectProblemIds(listId.trim());
     }
 
     // ---------------- 内部 ----------------

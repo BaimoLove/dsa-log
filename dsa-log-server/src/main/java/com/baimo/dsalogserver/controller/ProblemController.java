@@ -8,6 +8,7 @@ import com.baimo.dsalogserver.dto.UpdateProblemRequest;
 import com.baimo.dsalogserver.service.ProblemService;
 import com.baimo.dsalogserver.vo.MarkSolvedVO;
 import com.baimo.dsalogserver.vo.ProblemVO;
+import com.baimo.dsalogserver.vo.RandomPickVO;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -30,10 +31,13 @@ public class ProblemController {
      * 题库为空时返 200 + data:null，不用 204：成功一律走 Result 包装，
      * 前端只判 data 是否存在，不必再对 HTTP 状态码开一条分支。
      * 路径写在 /{id} 之前只是阅读顺序，Spring 本来就优先匹配字面量。
+     *
+     * <p>返回体是 RandomPickVO 而不是裸 ProblemVO：pool/reset/candidateCount
+     * 由四级级联的执行者给出，前端不重复推演（见 vo/RandomPickVO 注释）。
      */
     @GetMapping("/random")
-    public Result<ProblemVO> random(@RequestParam(required = false) String pool,
-                                    @RequestParam(required = false) List<String> exclude) {
+    public Result<RandomPickVO> random(@RequestParam(required = false) String pool,
+                                       @RequestParam(required = false) List<String> exclude) {
         return Result.success(problemService.random(pool, exclude));
     }
 

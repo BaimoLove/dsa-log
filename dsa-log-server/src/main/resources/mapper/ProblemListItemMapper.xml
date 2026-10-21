@@ -33,6 +33,14 @@
         )
     </select>
 
+    <!-- 按加入顺序返回成员 id，对应前端仓储的 problemIdsOf -->
+    <select id="selectProblemIds" resultType="string">
+        SELECT li.problem_id
+        FROM problem_list_item li
+        WHERE li.list_id = #{listId}
+        ORDER BY li.sort_order ASC, li.created_at ASC
+    </select>
+
     <!-- sort_order 用「起始序号 + 下标」连续分配，只对缺失的题插行，不会有空洞 -->
     <insert id="insertIgnoreBatch">
         INSERT IGNORE INTO problem_list_item (list_id, problem_id, sort_order, created_at)

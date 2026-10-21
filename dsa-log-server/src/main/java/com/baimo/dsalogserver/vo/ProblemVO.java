@@ -31,6 +31,9 @@ public class ProblemVO {
     private Long createdAt;
     private Long updatedAt;
 
+    /** 0 正常 / 1 已归档。前端据此决定列表筛哪一档、是否参与随机与统计 */
+    private Integer archived;
+
     private List<String> tagIds = new ArrayList<>();
     private List<TagVO> tags = new ArrayList<>();
 }

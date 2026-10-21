@@ -3,15 +3,20 @@
         "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.baimo.dsalogserver.mapper.ProblemMapper">
 
+    <!--
+      last_reviewed_at 与 archived 是 M6.5 / M8 补的列，必须写进 baseColumns：
+      漏一列的表现不是报错，而是「导出后导入排期/归档状态丢了」这种安静的数据损失。
+    -->
     <sql id="baseColumns">
         p.id, p.title, p.difficulty, p.status, p.approach, p.note, p.source, p.url,
         p.solved_at, p.last_solved_at, p.solve_count, p.review_stage, p.next_review_at,
-        p.created_at, p.updated_at
+        p.last_reviewed_at, p.archived, p.created_at, p.updated_at
     </sql>
 
     <sql id="whereClause">
         <where>
             p.deleted = 0
+            AND p.archived = #{q.archived}
             <if test="q.keyword != null and q.keyword != ''">
                 AND (
                     p.title LIKE CONCAT('%', #{q.keyword}, '%')
@@ -71,26 +76,35 @@
         FOR UPDATE
     </select>
 
-    <!-- ORDER BY id 保证加锁顺序一致，两个批次不会交叉等待 -->
+    <!--
+      ORDER BY id 保证加锁顺序一致，两个批次不会交叉等待。
+      archived = 0：批量已刷/取消已刷都跳过归档题，与前端 Dexie 实现一致，
+      affected 也因此天然不含归档题。
+    -->
     <select id="selectByIdsForUpdate" resultType="com.baimo.dsalogserver.entity.Problem">
         SELECT <include refid="baseColumns"/>
         FROM problem p
-        WHERE p.deleted = 0 AND p.id IN
+        WHERE p.deleted = 0 AND p.archived = 0 AND p.id IN
         <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
         ORDER BY p.id
         FOR UPDATE
     </select>
 
+    <!--
+      这里刻意不带 archived = 0：批量删除要能删掉归档题（前端 Dexie 的 bulkRemove
+      也是「存在就删」，不看归档位）。
+    -->
     <select id="selectExistingIds" resultType="string">
         SELECT p.id FROM problem p
         WHERE p.deleted = 0 AND p.id IN
         <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
     </select>
 
-    <!-- 子查询统计「这题已命中几个目标标签」，小于目标数说明还缺，需要变更 -->
+    <!-- 子查询统计「这题已命中几个目标标签」，小于目标数说明还缺，需要变更。
+         归档题跳过：打标签对归档题没有意义，也不该计入 affected -->
     <select id="selectIdsNeedTags" resultType="string">
         SELECT p.id FROM problem p
-        WHERE p.deleted = 0 AND p.id IN
+        WHERE p.deleted = 0 AND p.archived = 0 AND p.id IN
         <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
         AND (
             SELECT COUNT(DISTINCT pt.tag_id) FROM problem_tag pt
@@ -99,10 +113,15 @@
         ) &lt; #{tagCount}
     </select>
 
-    <select id="selectRandomOne" resultType="com.baimo.dsalogserver.entity.Problem">
-        SELECT <include refid="baseColumns"/>
-        FROM problem p
-        WHERE p.deleted = 0
+    <!--
+      随机抽题的候选集条件，selectRandomOne 与 countCandidates 共用这一段。
+      抽出来是因为 candidateCount 要回显给用户（「从 N 道未刷题中抽取」），
+      一旦两处条件写岔了，提示里的 N 就和实际抽取范围不一致——
+      而这种偏差在数据量小的时候几乎测不出来。
+      archived = 0：归档题不参与随机（前端 pickRandomProblem 也是在这一步过滤）。
+    -->
+    <sql id="candidateWhere">
+        WHERE p.deleted = 0 AND p.archived = 0
         <if test="status != null and status != ''">
             AND p.status = #{status}
         </if>
@@ -110,8 +129,20 @@
             AND p.id NOT IN
             <foreach collection="excludeIds" item="e" open="(" separator="," close=")">#{e}</foreach>
         </if>
+    </sql>
+
+    <select id="selectRandomOne" resultType="com.baimo.dsalogserver.entity.Problem">
+        SELECT <include refid="baseColumns"/>
+        FROM problem p
+        <include refid="candidateWhere"/>
         ORDER BY RAND()
         LIMIT 1
+    </select>
+
+    <select id="countCandidates" resultType="long">
+        SELECT COUNT(*)
+        FROM problem p
+        <include refid="candidateWhere"/>
     </select>
 
     <!--
@@ -122,14 +153,14 @@
     <select id="selectDue" resultType="com.baimo.dsalogserver.entity.Problem">
         SELECT <include refid="baseColumns"/>
         FROM problem p
-        WHERE p.deleted = 0 AND p.status = 'solved' AND p.next_review_at &lt;= #{now}
+        WHERE p.deleted = 0 AND p.archived = 0 AND p.status = 'solved' AND p.next_review_at &lt;= #{now}
         ORDER BY p.next_review_at ASC
         LIMIT #{limit}
     </select>
 
     <select id="countDue" resultType="long">
         SELECT COUNT(*) FROM problem p
-        WHERE p.deleted = 0 AND p.status = 'solved' AND p.next_review_at &lt;= #{now}
+        WHERE p.deleted = 0 AND p.archived = 0 AND p.status = 'solved' AND p.next_review_at &lt;= #{now}
     </select>
 
     <!--
@@ -185,12 +216,12 @@
         INSERT INTO problem
             (id, title, difficulty, status, approach, note, source, url,
              solved_at, last_solved_at, solve_count, review_stage, next_review_at, last_reviewed_at,
-             created_at, updated_at, deleted)
+             archived, created_at, updated_at, deleted)
         VALUES
         <foreach collection="items" item="p" separator=",">
             (#{p.id}, #{p.title}, #{p.difficulty}, #{p.status}, #{p.approach}, #{p.note}, #{p.source}, #{p.url},
              #{p.solvedAt}, #{p.lastSolvedAt}, #{p.solveCount}, #{p.reviewStage}, #{p.nextReviewAt},
-             #{p.lastReviewedAt}, #{p.createdAt}, #{p.updatedAt}, #{p.deleted})
+             #{p.lastReviewedAt}, #{p.archived}, #{p.createdAt}, #{p.updatedAt}, #{p.deleted})
         </foreach>
         ON DUPLICATE KEY UPDATE
             title = VALUES(title), difficulty = VALUES(difficulty), status = VALUES(status),
@@ -198,6 +229,7 @@
             solved_at = VALUES(solved_at), last_solved_at = VALUES(last_solved_at),
             solve_count = VALUES(solve_count), review_stage = VALUES(review_stage),
             next_review_at = VALUES(next_review_at), last_reviewed_at = VALUES(last_reviewed_at),
+            archived = VALUES(archived),
             updated_at = VALUES(updated_at), deleted = VALUES(deleted)
     </insert>
 

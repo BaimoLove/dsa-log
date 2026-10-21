@@ -18,6 +18,7 @@ import com.baimo.dsalogserver.service.ProblemService;
 import com.baimo.dsalogserver.service.ReviewScheduler;
 import com.baimo.dsalogserver.vo.MarkSolvedVO;
 import com.baimo.dsalogserver.vo.ProblemVO;
+import com.baimo.dsalogserver.vo.RandomPickVO;
 import com.baimo.dsalogserver.vo.TagRow;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -70,38 +71,65 @@ public class ProblemServiceImpl implements ProblemService {
     @Override
     public ProblemVO get(String id) {
         Problem p = problemMapper.selectById(id);
-        if (p == null) {
+        if (unavailable(p)) {
+            // 归档题对外视同不存在：Dexie 侧 getById 对 archived=1 返回 null，
+            // http 仓储再把这里的 404 映射回 null，两边行为一致
             throw BizException.notFound("题目");
         }
         return converter.toVO(p, problemTagMapper.selectByProblemIds(List.of(id)));
     }
 
+    /** 归档题的 get / update / markSolved / markUnsolved 一律按「不存在」处理 */
+    private static boolean unavailable(Problem p) {
+        return p == null || (p.getArchived() != null && p.getArchived() == 1);
+    }
+
     /**
      * 随机一题，四级级联：未刷未抽 → 未刷重置 → 全库未抽 → 全库重置 → null。
+     *
+     * <p>pool / reset / candidateCount 由「命中哪一级」决定，不由入参推断：
+     * 前端要靠 reset 判断「清空本轮已抽集合」、靠 candidateCount 显示候选规模，
+     * 让它自己在浏览器里推演就等于把级联逻辑维护两份。
      */
     @Override
-    public ProblemVO random(String pool, List<String> excludeIds) {
+    public RandomPickVO random(String pool, List<String> excludeIds) {
         List<String> exclude = excludeIds == null ? List.of()
                 : excludeIds.stream().filter(Objects::nonNull).map(String::trim)
                 .filter(s -> !s.isEmpty()).distinct().toList();
 
-        Problem picked = null;
-        if (!"all".equalsIgnoreCase(pool)) {
-            picked = problemMapper.selectRandomOne("todo", exclude);
-            if (picked == null) {
-                picked = problemMapper.selectRandomOne("todo", List.of());
-            }
+        boolean forceAll = "all".equalsIgnoreCase(pool);
+        String status = forceAll ? null : "todo";
+        List<String> excludeArg = exclude;
+        boolean reset = false;
+
+        Problem picked = problemMapper.selectRandomOne(status, excludeArg);
+
+        if (picked == null && !forceAll) {
+            // 第 2 级：未刷池本轮抽完，重置（不再排除已抽）
+            excludeArg = List.of();
+            picked = problemMapper.selectRandomOne(status, excludeArg);
+            reset = picked != null;
         }
         if (picked == null) {
-            picked = problemMapper.selectRandomOne(null, exclude);
+            // 第 3 级：退到全库，继续排除本轮已抽过的
+            status = null;
+            excludeArg = exclude;
+            picked = problemMapper.selectRandomOne(status, excludeArg);
+            reset = false;
         }
         if (picked == null) {
-            picked = problemMapper.selectRandomOne(null, List.of());
+            // 第 4 级：全库也抽完了，重置
+            excludeArg = List.of();
+            picked = problemMapper.selectRandomOne(status, excludeArg);
+            reset = picked != null;
         }
         if (picked == null) {
             return null;
         }
-        return converter.toVO(picked, problemTagMapper.selectByProblemIds(List.of(picked.getId())));
+
+        long candidateCount = problemMapper.countCandidates(status, excludeArg);
+        ProblemVO vo = converter.toVO(picked, problemTagMapper.selectByProblemIds(List.of(picked.getId())));
+        return new RandomPickVO(vo, status == null ? "all" : "unsolved", reset, candidateCount);
     }
 
     // ---------------- 写 ----------------
@@ -146,7 +174,7 @@ public class ProblemServiceImpl implements ProblemService {
     @Transactional
     public ProblemVO update(String id, UpdateProblemRequest req) {
         Problem p = problemMapper.selectById(id);
-        if (p == null) {
+        if (unavailable(p)) {
             throw BizException.notFound("题目");
         }
         if (req.getTitle() != null) {
@@ -171,13 +199,18 @@ public class ProblemServiceImpl implements ProblemService {
         if (req.getUrl() != null) {
             p.setUrl(trim(req.getUrl()));
         }
+        if (req.getArchived() != null) {
+            p.setArchived(req.getArchived());
+        }
         p.setUpdatedAt(TimeUtil.now());
         problemMapper.updateById(p);
 
         if (req.getTagIds() != null) {
             replaceTags(id, req.getTagIds());
         }
-        return get(id);
+        // 刻意不回读 get(id)：把 archived 改成 1 的那一次调用本身要返回更新后的题目，
+        // 回读会因为「归档视同不存在」直接 404。
+        return converter.toVO(p, problemTagMapper.selectByProblemIds(List.of(id)));
     }
 
     /** 逻辑删 + 清关联；复习流水保留，作为历史 */
@@ -206,7 +239,7 @@ public class ProblemServiceImpl implements ProblemService {
     @Transactional
     public MarkSolvedVO markSolved(String id) {
         Problem p = problemMapper.selectForUpdate(id);
-        if (p == null) {
+        if (unavailable(p)) {
             throw BizException.notFound("题目");
         }
         LocalDateTime now = TimeUtil.now();
@@ -254,7 +287,7 @@ public class ProblemServiceImpl implements ProblemService {
     @Transactional
     public ProblemVO markUnsolved(String id) {
         Problem p = problemMapper.selectForUpdate(id);
-        if (p == null) {
+        if (unavailable(p)) {
             throw BizException.notFound("题目");
         }
         if ("todo".equals(p.getStatus())) {

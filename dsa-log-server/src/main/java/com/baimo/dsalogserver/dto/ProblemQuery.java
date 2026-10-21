@@ -26,6 +26,12 @@ public class ProblemQuery {
     /** 只查某个题单内的题 */
     private String listId;
 
+    /**
+     * 0 只看未归档（默认）/ 1 只看已归档。是**精确匹配**而不是「0 表示不过滤」：
+     * 前端 Dexie 实现在这一问题上是同一个语义，两边必须一致。
+     */
+    private Integer archived = 0;
+
     private int page = 1;
     private int size = 20;
 
@@ -34,6 +40,11 @@ public class ProblemQuery {
 
     public int safePage() {
         return Math.max(page, 1);
+    }
+
+    /** archived 只认 0/1，其它值一律当 0（不让脏参数把归档题混进正常列表） */
+    public int safeArchived() {
+        return archived != null && archived == 1 ? 1 : 0;
     }
 
     /** size 夹在 1..100 */

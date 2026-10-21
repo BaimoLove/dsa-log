@@ -87,6 +87,11 @@ public class ReviewServiceImpl implements ReviewService {
         if (p == null) {
             throw BizException.notFound("题目");
         }
+        // 归档题的语义是「视同不存在」，判在「不在池」之前：
+        // 归档还会连带清掉排期，落在后面的分支会变成 400 而不是 404，与 Dexie 侧不一致
+        if (p.getArchived() != null && p.getArchived() == 1) {
+            throw BizException.notFound("题目");
+        }
         if (!"solved".equals(p.getStatus()) || p.getNextReviewAt() == null) {
             throw BizException.invalid("这道题不在复习队列里");
         }

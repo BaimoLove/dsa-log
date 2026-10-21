@@ -1,5 +1,7 @@
 package com.baimo.dsalogserver.dto;
 
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
@@ -32,4 +34,9 @@ public class UpdateProblemRequest {
 
     /** null = 不改标签；[] = 清空 */
     private List<String> tagIds;
+
+    /** 0 取消归档 / 1 归档；null = 不改。归档不参与随机、统计与待复习 */
+    @Min(value = 0, message = "archived 只能是 0 或 1")
+    @Max(value = 1, message = "archived 只能是 0 或 1")
+    private Integer archived;
 }

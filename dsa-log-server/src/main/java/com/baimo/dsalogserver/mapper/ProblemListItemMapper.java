@@ -27,6 +27,13 @@ public interface ProblemListItemMapper {
     /** 未在该题单里的题目 id：批量加入只对这部分插行，affected 才等于真实新增数 */
     List<String> selectMissingIds(@Param("listId") String listId, @Param("ids") List<String> ids);
 
+    /**
+     * 题单里的题目 id（按加入顺序）。这是前端仓储契约里 {@code problemIdsOf} 的数据来源，
+     * 不校验题单是否存在（题单不存在就是空集合，与 Dexie 侧行为一致），
+     * 也不过滤归档——它问的是「关联表里有什么」，筛选题是调用方的事。
+     */
+    List<String> selectProblemIds(@Param("listId") String listId);
+
     int insertIgnoreBatch(@Param("listId") String listId,
                           @Param("problemIds") List<String> problemIds,
                           @Param("startOrder") int startOrder);

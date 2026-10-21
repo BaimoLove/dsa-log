@@ -41,4 +41,10 @@ public interface ListService {
 
     /** 移出一道题；不在题单里抛 notFound */
     void removeProblem(String listId, String problemId);
+
+    /**
+     * 题单成员 id，按加入顺序。题单不存在返回空列表（不抛 404）——
+     * 前端仓储契约里它是「查询关联」而不是「查询题单」。
+     */
+    List<String> problemIds(String listId);
 }

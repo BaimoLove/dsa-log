@@ -33,10 +33,14 @@ public class StatsServiceImpl implements StatsService {
     public OverviewVO overview() {
         OverviewVO vo = new OverviewVO();
         vo.setDueCount(problemMapper.countDue(TimeUtil.now()));
-        // selectCount 由 MP 生成，@TableLogic 会自动带上 deleted = 0
-        vo.setTotalProblems(problemMapper.selectCount(Wrappers.emptyWrapper()));
+        // selectCount 由 MP 生成，@TableLogic 会自动带上 deleted = 0；
+        // archived = 0 要显式写——归档题不算在题库规模里（前端 Dexie 概览同样只数未归档）
+        vo.setTotalProblems(problemMapper.selectCount(
+                Wrappers.<Problem>lambdaQuery().eq(Problem::getArchived, 0)));
         vo.setSolvedProblems(problemMapper.selectCount(
-                Wrappers.<Problem>lambdaQuery().eq(Problem::getStatus, "solved")));
+                Wrappers.<Problem>lambdaQuery()
+                        .eq(Problem::getStatus, "solved")
+                        .eq(Problem::getArchived, 0)));
 
         // 今日 = [今日00:00, 明日00:00)，边界在 Java 侧算，SQL 不对索引列套函数
         vo.setSolvedToday(reviewRecordMapper.countDistinctSolvedBetween(

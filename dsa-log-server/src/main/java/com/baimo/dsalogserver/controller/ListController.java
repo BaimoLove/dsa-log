@@ -72,6 +72,16 @@ public class ListController {
         return Result.success(listService.addProblems(id, request.getIds()));
     }
 
+    /**
+     * 成员 id 列表。单独一个端点而不是复用 {@code /{id}/problems}：
+     * 后者是分页的（size 上限 100），取「全集 id」要么翻页要么把上限调大，
+     * 两条路都不如一条只查关联表的 SQL 干净。
+     */
+    @GetMapping("/{id}/problem-ids")
+    public Result<List<String>> problemIds(@PathVariable String id) {
+        return Result.success(listService.problemIds(id));
+    }
+
     @DeleteMapping("/{id}/items/{problemId}")
     public Result<Void> removeItem(@PathVariable String id, @PathVariable String problemId) {
         listService.removeProblem(id, problemId);
