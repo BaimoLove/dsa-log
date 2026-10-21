@@ -5,6 +5,7 @@ import { X } from 'lucide-vue-next'
 import SideBar from './SideBar.vue'
 import TopBar from './TopBar.vue'
 import RandomPickModal from '@/components/problem/RandomPickModal.vue'
+import UndoToast from '@/components/common/UndoToast.vue'
 import { useUiStore } from '@/stores/ui'
 
 const ui = useUiStore()
@@ -65,5 +66,7 @@ function close() {
 
     <!-- 全局单例：TopBar / 概览页 / 题库页都通过 random store 唤起 -->
     <RandomPickModal />
+    <!-- 全局单例：批量操作后的撤销条，6 秒窗口 -->
+    <UndoToast />
   </div>
 </template>
