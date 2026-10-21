@@ -29,7 +29,7 @@ public class ProblemQuery {
     private int page = 1;
     private int size = 20;
 
-    /** 排序白名单，见 ProblemService.SORTS */
+    /** 排序白名单，见 ProblemServiceImpl.SORTS */
     private String sort = "updatedAt_desc";
 
     public int safePage() {
