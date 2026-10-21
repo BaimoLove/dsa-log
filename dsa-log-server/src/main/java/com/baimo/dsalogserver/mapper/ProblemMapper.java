@@ -71,4 +71,17 @@ public interface ProblemMapper extends BaseMapper<Problem> {
      * 实体里把 nextReviewAt 置 null 后该列不会进 SET 子句，等于没清。
      */
     int clearReviewSchedule(@Param("id") String id, @Param("now") LocalDateTime now);
+
+    /** 导入用：一次 upsert 一批题目（已存在则整行覆盖） */
+    int upsertBatch(@Param("items") List<Problem> items);
+
+    /** 导入 replace 模式用：物理清空（逻辑删会留下 deleted=1 的脏行占据唯一键） */
+    int physicalDeleteAll();
+
+    /**
+     * 导入分类用：{@code @TableLogic} 会让 selectList 过滤掉已删行，
+     * 而导入必须看到它们——否则同 id 的已删行会被当成「不存在」，
+     * created/skipped 的计数就错了（数据本身靠 upsert 兜住）。
+     */
+    List<Problem> selectAllIncludingDeleted();
 }

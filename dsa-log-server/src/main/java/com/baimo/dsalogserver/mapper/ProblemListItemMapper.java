@@ -1,5 +1,6 @@
 package com.baimo.dsalogserver.mapper;
 
+import com.baimo.dsalogserver.vo.ListItemVO;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
@@ -29,4 +30,13 @@ public interface ProblemListItemMapper {
     int insertIgnoreBatch(@Param("listId") String listId,
                           @Param("problemIds") List<String> problemIds,
                           @Param("startOrder") int startOrder);
+
+    /** 导出用：全部关联，时间在 SQL 里转成 epoch 毫秒（VO 不出现 LocalDateTime） */
+    List<ListItemVO> selectAll();
+
+    /** 导入用：保留原始的 sort_order 与加入时间，与「加入题单」时的自增分配不同 */
+    int insertIgnoreFullBatch(@Param("items") List<ListItemVO> items);
+
+    /** 导入 replace 模式用：物理清空 */
+    int deleteAll();
 }

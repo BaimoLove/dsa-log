@@ -33,5 +33,19 @@
         WHERE kind = 'REVIEW'
           AND reviewed_at &gt;= #{start} AND reviewed_at &lt; #{end}
     </select>
+    <!-- 导入用：流水只增不改，重复 id 直接忽略；比「先查再插」少一轮往返 -->
+    <insert id="insertIgnoreBatch">
+        INSERT IGNORE INTO review_record
+            (id, problem_id, kind, rating, from_stage, to_stage, interval_days, next_review_at, reviewed_at, created_at)
+        VALUES
+        <foreach collection="records" item="r" separator=",">
+            (#{r.id}, #{r.problemId}, #{r.kind}, #{r.rating}, #{r.fromStage}, #{r.toStage},
+             #{r.intervalDays}, #{r.nextReviewAt}, #{r.reviewedAt}, #{r.createdAt})
+        </foreach>
+    </insert>
+
+    <delete id="deleteAll">
+        DELETE FROM review_record
+    </delete>
 
 </mapper>

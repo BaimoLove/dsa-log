@@ -1,5 +1,6 @@
 package com.baimo.dsalogserver.mapper;
 
+import com.baimo.dsalogserver.dto.ProblemTagPair;
 import com.baimo.dsalogserver.vo.TagRow;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -27,4 +28,10 @@ public interface ProblemTagMapper {
     int deleteByTagId(@Param("tagId") String tagId);
 
     List<String> selectTagIdsByProblemId(@Param("problemId") String problemId);
+
+    /** 导入用：每道题的标签不同，只能逐对插入，不能做笛卡尔积 */
+    int insertIgnorePairs(@Param("pairs") List<ProblemTagPair> pairs);
+
+    /** 导入 replace 模式用：物理清空 */
+    int deleteAll();
 }

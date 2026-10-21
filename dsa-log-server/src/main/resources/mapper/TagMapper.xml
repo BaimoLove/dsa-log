@@ -40,5 +40,19 @@
             AND t.id != #{excludeId}
         </if>
     </select>
+    <!-- 导入用：标签没有 updatedAt，冲突时直接以文件为准 -->
+    <insert id="upsertBatch">
+        INSERT INTO tag (id, name, color, created_at)
+        VALUES
+        <foreach collection="items" item="t" separator=",">
+            (#{t.id}, #{t.name}, #{t.color}, #{t.createdAt})
+        </foreach>
+        ON DUPLICATE KEY UPDATE
+            name = VALUES(name), color = VALUES(color)
+    </insert>
+
+    <delete id="deleteAll">
+        DELETE FROM tag
+    </delete>
 
 </mapper>

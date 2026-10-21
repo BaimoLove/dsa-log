@@ -4,6 +4,7 @@ import com.baimo.dsalogserver.common.BizException;
 import com.baimo.dsalogserver.common.ErrorCode;
 import com.baimo.dsalogserver.common.TimeUtil;
 import com.baimo.dsalogserver.converter.ProblemConverter;
+import com.baimo.dsalogserver.converter.ReviewConverter;
 import com.baimo.dsalogserver.dto.RateReviewRequest;
 import com.baimo.dsalogserver.entity.Problem;
 import com.baimo.dsalogserver.entity.ReviewRecord;
@@ -56,6 +57,8 @@ class ReviewServiceTest {
     private ReviewRecordMapper reviewRecordMapper;
     @Spy
     private ProblemConverter converter = new ProblemConverter();
+    @Spy
+    private ReviewConverter reviewConverter = new ReviewConverter();
 
     @InjectMocks
     private ReviewServiceImpl service;

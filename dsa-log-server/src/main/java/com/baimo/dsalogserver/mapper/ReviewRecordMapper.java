@@ -27,4 +27,10 @@ public interface ReviewRecordMapper extends BaseMapper<ReviewRecord> {
     /** 今日「复习了多少次」：按流水条数，同一题复习两次算两次 */
     long countReviewBetween(@Param("start") LocalDateTime start,
                             @Param("end") LocalDateTime end);
+
+    /** 导入用：流水只增不改，重复 id 直接忽略 */
+    int insertIgnoreBatch(@Param("records") List<ReviewRecord> records);
+
+    /** 导入 replace 模式用：物理清空 */
+    int deleteAll();
 }

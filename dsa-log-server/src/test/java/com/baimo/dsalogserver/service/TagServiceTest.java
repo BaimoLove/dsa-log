@@ -3,6 +3,7 @@ package com.baimo.dsalogserver.service;
 import com.baimo.dsalogserver.common.BizException;
 import com.baimo.dsalogserver.common.ErrorCode;
 import com.baimo.dsalogserver.common.TimeUtil;
+import com.baimo.dsalogserver.converter.TagConverter;
 import com.baimo.dsalogserver.dto.CreateTagRequest;
 import com.baimo.dsalogserver.dto.UpdateTagRequest;
 import com.baimo.dsalogserver.entity.Tag;
@@ -17,6 +18,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDateTime;
@@ -42,6 +44,8 @@ class TagServiceTest {
     private TagMapper tagMapper;
     @Mock
     private ProblemTagMapper problemTagMapper;
+    @Spy
+    private TagConverter converter = new TagConverter();
 
     @InjectMocks
     private TagServiceImpl service;

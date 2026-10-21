@@ -29,4 +29,9 @@ public interface TagMapper extends BaseMapper<Tag> {
 
     /** 重名校验；excludeId 用于改名时排除自己 */
     int countByName(@Param("name") String name, @Param("excludeId") String excludeId);
+
+    /** 导入用：按 id upsert，标签名冲突由调用方兜住（唯一索引会抛 DuplicateKey） */
+    int upsertBatch(@Param("items") List<Tag> items);
+
+    int deleteAll();
 }

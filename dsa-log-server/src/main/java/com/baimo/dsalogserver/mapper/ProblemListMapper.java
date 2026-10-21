@@ -29,4 +29,13 @@ public interface ProblemListMapper extends BaseMapper<ProblemList> {
 
     /** 新题单的排序号：取未删行的 max+1，空表返回 0 */
     int nextSortOrder();
+
+    /** 导入用：按 id upsert */
+    int upsertBatch(@Param("items") List<ProblemList> items);
+
+    /** 导入 replace 模式用：物理清空 */
+    int physicalDeleteAll();
+
+    /** 导入分类用：带上已删行，理由同 ProblemMapper.selectAllIncludingDeleted */
+    List<ProblemList> selectAllIncludingDeleted();
 }

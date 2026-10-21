@@ -2,13 +2,13 @@ package com.baimo.dsalogserver.service.impl;
 
 import com.baimo.dsalogserver.common.BizException;
 import com.baimo.dsalogserver.common.TimeUtil;
+import com.baimo.dsalogserver.converter.TagConverter;
 import com.baimo.dsalogserver.dto.CreateTagRequest;
 import com.baimo.dsalogserver.dto.UpdateTagRequest;
 import com.baimo.dsalogserver.entity.Tag;
 import com.baimo.dsalogserver.mapper.ProblemTagMapper;
 import com.baimo.dsalogserver.mapper.TagMapper;
 import com.baimo.dsalogserver.service.TagService;
-import com.baimo.dsalogserver.vo.TagUsageRow;
 import com.baimo.dsalogserver.vo.TagUsageVO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -36,10 +36,11 @@ public class TagServiceImpl implements TagService {
 
     private final TagMapper tagMapper;
     private final ProblemTagMapper problemTagMapper;
+    private final TagConverter converter;
 
     @Override
     public List<TagUsageVO> list(String keyword) {
-        return tagMapper.selectWithUsage(trim(keyword)).stream().map(this::toVO).toList();
+        return tagMapper.selectWithUsage(trim(keyword)).stream().map(converter::toVO).toList();
     }
 
     @Override
@@ -56,7 +57,7 @@ public class TagServiceImpl implements TagService {
         tag.setCreatedAt(now);
         tagMapper.insert(tag);
 
-        return toVO(tagMapper.selectUsageById(tag.getId()));
+        return converter.toVO(tagMapper.selectUsageById(tag.getId()));
     }
 
     @Override
@@ -76,7 +77,7 @@ public class TagServiceImpl implements TagService {
         }
         tagMapper.updateById(tag);
 
-        return toVO(tagMapper.selectUsageById(id));
+        return converter.toVO(tagMapper.selectUsageById(id));
     }
 
     @Override
@@ -93,15 +94,6 @@ public class TagServiceImpl implements TagService {
 
     // ---------------- 内部 ----------------
 
-    private TagUsageVO toVO(TagUsageRow row) {
-        TagUsageVO vo = new TagUsageVO();
-        vo.setId(row.getId());
-        vo.setName(row.getName());
-        vo.setColor(row.getColor());
-        vo.setCreatedAt(TimeUtil.toMillis(row.getCreatedAt()));
-        vo.setUsageCount(row.getUsageCount());
-        return vo;
-    }
 
     private String requireName(String raw) {
         String name = trim(raw);

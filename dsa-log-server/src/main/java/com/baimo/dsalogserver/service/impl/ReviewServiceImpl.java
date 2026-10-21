@@ -3,6 +3,7 @@ package com.baimo.dsalogserver.service.impl;
 import com.baimo.dsalogserver.common.BizException;
 import com.baimo.dsalogserver.common.TimeUtil;
 import com.baimo.dsalogserver.converter.ProblemConverter;
+import com.baimo.dsalogserver.converter.ReviewConverter;
 import com.baimo.dsalogserver.dto.RateReviewRequest;
 import com.baimo.dsalogserver.entity.Problem;
 import com.baimo.dsalogserver.entity.ReviewRecord;
@@ -49,6 +50,7 @@ public class ReviewServiceImpl implements ReviewService {
     private final ProblemTagMapper problemTagMapper;
     private final ReviewRecordMapper reviewRecordMapper;
     private final ProblemConverter problemConverter;
+    private final ReviewConverter reviewConverter;
 
     @Override
     public DueReviewVO due(Integer limit) {
@@ -114,7 +116,7 @@ public class ReviewServiceImpl implements ReviewService {
 
         RateVO vo = new RateVO();
         vo.setProblem(problemConverter.toVO(p, problemTagMapper.selectByProblemIds(List.of(problemId))));
-        vo.setRecord(toRecordVO(record));
+        vo.setRecord(reviewConverter.toVO(record));
         vo.setFromStage(fromStage);
         vo.setToStage(outcome.stage());
         vo.setIntervalDays(outcome.intervalDays());
@@ -128,20 +130,7 @@ public class ReviewServiceImpl implements ReviewService {
         if (id.isEmpty()) {
             throw BizException.invalid("problemId 不能为空");
         }
-        return reviewRecordMapper.selectByProblemId(id).stream().map(this::toRecordVO).toList();
+        return reviewRecordMapper.selectByProblemId(id).stream().map(reviewConverter::toVO).toList();
     }
 
-    private ReviewRecordVO toRecordVO(ReviewRecord r) {
-        ReviewRecordVO vo = new ReviewRecordVO();
-        vo.setId(r.getId());
-        vo.setProblemId(r.getProblemId());
-        vo.setKind(r.getKind());
-        vo.setRating(r.getRating());
-        vo.setFromStage(r.getFromStage());
-        vo.setToStage(r.getToStage());
-        vo.setIntervalDays(r.getIntervalDays());
-        vo.setNextReviewAt(TimeUtil.toMillis(r.getNextReviewAt()));
-        vo.setReviewedAt(TimeUtil.toMillis(r.getReviewedAt()));
-        return vo;
-    }
 }

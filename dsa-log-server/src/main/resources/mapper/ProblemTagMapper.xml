@@ -43,5 +43,18 @@
     <select id="selectTagIdsByProblemId" resultType="string">
         SELECT tag_id FROM problem_tag WHERE problem_id = #{problemId}
     </select>
+    <!-- 导入用：逐对插入。这里不能复用 insertIgnoreBatch（那是题目 × 标签的笛卡尔积），
+         导入时每道题的标签各不相同，做笛卡尔积会把没打的标签也挂上去 -->
+    <insert id="insertIgnorePairs">
+        INSERT IGNORE INTO problem_tag (problem_id, tag_id)
+        VALUES
+        <foreach collection="pairs" item="p" separator=",">
+            (#{p.problemId}, #{p.tagId})
+        </foreach>
+    </insert>
+
+    <delete id="deleteAll">
+        DELETE FROM problem_tag
+    </delete>
 
 </mapper>

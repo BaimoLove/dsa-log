@@ -176,5 +176,40 @@
         SET status = 'todo', review_stage = 0, next_review_at = NULL, updated_at = #{now}
         WHERE id = #{id} AND deleted = 0
     </update>
+    <!--
+      导入用整行 upsert。为什么不用 MP 的 updateById：导入要写的是「文件里的整行」，
+      包括 deleted 与 created_at；而 updateById 受 FieldStrategy.NOT_NULL 限制，
+      null 字段会被排除出 SET 子句，导入一份「排期为空」的题就会静默保留旧排期。
+    -->
+    <insert id="upsertBatch">
+        INSERT INTO problem
+            (id, title, difficulty, status, approach, note, source, url,
+             solved_at, last_solved_at, solve_count, review_stage, next_review_at, last_reviewed_at,
+             created_at, updated_at, deleted)
+        VALUES
+        <foreach collection="items" item="p" separator=",">
+            (#{p.id}, #{p.title}, #{p.difficulty}, #{p.status}, #{p.approach}, #{p.note}, #{p.source}, #{p.url},
+             #{p.solvedAt}, #{p.lastSolvedAt}, #{p.solveCount}, #{p.reviewStage}, #{p.nextReviewAt},
+             #{p.lastReviewedAt}, #{p.createdAt}, #{p.updatedAt}, #{p.deleted})
+        </foreach>
+        ON DUPLICATE KEY UPDATE
+            title = VALUES(title), difficulty = VALUES(difficulty), status = VALUES(status),
+            approach = VALUES(approach), note = VALUES(note), source = VALUES(source), url = VALUES(url),
+            solved_at = VALUES(solved_at), last_solved_at = VALUES(last_solved_at),
+            solve_count = VALUES(solve_count), review_stage = VALUES(review_stage),
+            next_review_at = VALUES(next_review_at), last_reviewed_at = VALUES(last_reviewed_at),
+            updated_at = VALUES(updated_at), deleted = VALUES(deleted)
+    </insert>
+
+    <!-- replace 导入前清空：必须物理删，逻辑删会留下 deleted=1 的行继续占着主键 -->
+    <delete id="physicalDeleteAll">
+        DELETE FROM problem
+    </delete>
+
+    <select id="selectAllIncludingDeleted" resultType="com.baimo.dsalogserver.entity.Problem">
+        SELECT <include refid="baseColumns"/>, p.deleted
+        FROM problem p
+        ORDER BY p.id
+    </select>
 
 </mapper>

@@ -41,5 +41,30 @@
             (#{listId}, #{problemId}, #{startOrder} + #{i}, NOW(3))
         </foreach>
     </insert>
+    <!--
+      导出用：时间在 SQL 里转 epoch 毫秒。
+      UNIX_TIMESTAMP 按会话时区解释 DATETIME，与写入时的 NOW(3) 同一套基准。
+    -->
+    <select id="selectAll" resultType="com.baimo.dsalogserver.vo.ListItemVO">
+        SELECT list_id AS listId,
+               problem_id AS problemId,
+               sort_order AS sortOrder,
+               CAST(UNIX_TIMESTAMP(created_at) * 1000 AS SIGNED) AS addedAt
+        FROM problem_list_item
+        ORDER BY list_id, sort_order
+    </select>
+
+    <!-- 导入用：保留文件里的 sort_order 与加入时间，不做自增重排 -->
+    <insert id="insertIgnoreFullBatch">
+        INSERT IGNORE INTO problem_list_item (list_id, problem_id, sort_order, created_at)
+        VALUES
+        <foreach collection="items" item="i" separator=",">
+            (#{i.listId}, #{i.problemId}, #{i.sortOrder}, IFNULL(FROM_UNIXTIME(#{i.addedAt} / 1000), NOW(3)))
+        </foreach>
+    </insert>
+
+    <delete id="deleteAll">
+        DELETE FROM problem_list_item
+    </delete>
 
 </mapper>

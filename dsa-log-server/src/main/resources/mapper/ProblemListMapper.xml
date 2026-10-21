@@ -56,4 +56,28 @@
         SELECT IFNULL(MAX(sort_order) + 1, 0) FROM problem_list WHERE deleted = 0
     </select>
 
+    <!-- 导入用整行 upsert：deleted 也要写，否则「文件里是活的、库里的已删」还原不回来 -->
+    <insert id="upsertBatch">
+        INSERT INTO problem_list
+            (id, name, description, color, sort_order, created_at, updated_at, deleted)
+        VALUES
+        <foreach collection="items" item="l" separator=",">
+            (#{l.id}, #{l.name}, #{l.description}, #{l.color}, #{l.sortOrder},
+             #{l.createdAt}, #{l.updatedAt}, #{l.deleted})
+        </foreach>
+        ON DUPLICATE KEY UPDATE
+            name = VALUES(name), description = VALUES(description), color = VALUES(color),
+            sort_order = VALUES(sort_order), updated_at = VALUES(updated_at), deleted = VALUES(deleted)
+    </insert>
+
+    <delete id="physicalDeleteAll">
+        DELETE FROM problem_list
+    </delete>
+
+    <select id="selectAllIncludingDeleted" resultType="com.baimo.dsalogserver.entity.ProblemList">
+        SELECT id, name, description, color, sort_order, created_at, updated_at, deleted
+        FROM problem_list
+        ORDER BY deleted, sort_order, created_at
+    </select>
+
 </mapper>
