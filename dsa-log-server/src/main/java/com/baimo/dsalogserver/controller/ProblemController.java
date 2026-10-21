@@ -10,7 +10,6 @@ import com.baimo.dsalogserver.vo.MarkSolvedVO;
 import com.baimo.dsalogserver.vo.ProblemVO;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -27,15 +26,15 @@ public class ProblemController {
         return Result.success(problemService.list(query));
     }
 
-    /** 必须写在 /{id} 之前语义上更清晰；Spring 会优先匹配字面量路径 */
+    /**
+     * 题库为空时返 200 + data:null，不用 204：成功一律走 Result 包装，
+     * 前端只判 data 是否存在，不必再对 HTTP 状态码开一条分支。
+     * 路径写在 /{id} 之前只是阅读顺序，Spring 本来就优先匹配字面量。
+     */
     @GetMapping("/random")
-    public ResponseEntity<Result<ProblemVO>> random(@RequestParam(required = false) String pool,
-                                                    @RequestParam(required = false) List<String> exclude) {
-        ProblemVO vo = problemService.random(pool, exclude);
-        if (vo == null) {
-            return ResponseEntity.noContent().build();
-        }
-        return ResponseEntity.ok(Result.success(vo));
+    public Result<ProblemVO> random(@RequestParam(required = false) String pool,
+                                    @RequestParam(required = false) List<String> exclude) {
+        return Result.success(problemService.random(pool, exclude));
     }
 
     @GetMapping("/{id}")
