@@ -53,7 +53,9 @@
         <include refid="whereClause"/>
         ORDER BY
         <choose>
+            <when test="q.sort == 'updatedAt_asc'">p.updated_at ASC</when>
             <when test="q.sort == 'createdAt_desc'">p.created_at DESC</when>
+            <when test="q.sort == 'createdAt_asc'">p.created_at ASC</when>
             <when test="q.sort == 'difficulty_asc'">p.difficulty ASC, p.updated_at DESC</when>
             <when test="q.sort == 'difficulty_desc'">p.difficulty DESC, p.updated_at DESC</when>
             <when test="q.sort == 'nextReviewAt_asc'">p.next_review_at IS NULL, p.next_review_at ASC</when>

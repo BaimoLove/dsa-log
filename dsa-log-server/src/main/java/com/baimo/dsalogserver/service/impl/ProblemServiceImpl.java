@@ -37,10 +37,10 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class ProblemServiceImpl implements ProblemService {
 
-    /** 排序白名单，非法值回落默认，不做字符串拼接 */
+    /** 排序白名单，非法值回落默认，不做字符串拼接；与前端 SORT_OPTIONS 一一对应 */
     private static final Set<String> SORTS = Set.of(
-            "updatedAt_desc", "createdAt_desc", "difficulty_asc",
-            "difficulty_desc", "nextReviewAt_asc", "solvedAt_desc");
+            "updatedAt_desc", "updatedAt_asc", "createdAt_desc", "createdAt_asc",
+            "difficulty_asc", "difficulty_desc", "nextReviewAt_asc", "solvedAt_desc");
 
     private static final Set<String> DIFFICULTIES = Set.of("easy", "medium", "hard");
 
