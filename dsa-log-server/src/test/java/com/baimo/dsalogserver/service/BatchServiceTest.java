@@ -6,7 +6,6 @@ import com.baimo.dsalogserver.entity.Problem;
 import com.baimo.dsalogserver.entity.ReviewRecord;
 import com.baimo.dsalogserver.entity.Tag;
 import com.baimo.dsalogserver.mapper.ProblemListItemMapper;
-import com.baimo.dsalogserver.mapper.ProblemListMapper;
 import com.baimo.dsalogserver.mapper.ProblemMapper;
 import com.baimo.dsalogserver.mapper.ProblemTagMapper;
 import com.baimo.dsalogserver.mapper.ReviewRecordMapper;
@@ -50,11 +49,11 @@ class BatchServiceTest {
     @Mock
     private ProblemListItemMapper problemListItemMapper;
     @Mock
-    private ProblemListMapper problemListMapper;
-    @Mock
     private TagMapper tagMapper;
     @Mock
     private ReviewRecordMapper reviewRecordMapper;
+    @Mock
+    private ListService listService;
 
     @InjectMocks
     private BatchServiceImpl service;
@@ -157,27 +156,15 @@ class BatchServiceTest {
     }
 
     @Test
-    @DisplayName("加入题单：题单不存在抛 404，不写关联")
-    void addToListMissingList() {
-        when(problemListMapper.countAlive("nope")).thenReturn(0);
-
-        assertThatThrownBy(() -> service.addToList(List.of("p1"), "nope"))
-                .isInstanceOf(BizException.class)
-                .extracting(e -> ((BizException) e).getErrorCode())
-                .isEqualTo(ErrorCode.NOT_FOUND);
-        verify(problemListItemMapper, never()).insertIgnoreBatch(anyString(), anyList(), anyInt());
-    }
-
-    @Test
-    @DisplayName("加入题单：只对不在题单里的题插行，序号从现有最大值往后接")
-    void addToListOnlyMissing() {
-        when(problemListMapper.countAlive("l1")).thenReturn(1);
-        when(problemMapper.selectExistingIds(anyList())).thenReturn(List.of("p1", "p2"));
-        when(problemListItemMapper.selectMissingIds("l1", List.of("p1", "p2"))).thenReturn(List.of("p2"));
-        when(problemListItemMapper.nextSortOrder("l1")).thenReturn(7);
+    @DisplayName("加入题单：委托 ListService，本类不再自己算 affected")
+    void addToListDelegates() {
+        // 「查缺失 → 取序号 → INSERT IGNORE」只在 ListServiceImpl 里有一份，
+        // 两个端点调出同一个数字，所以这里只验转发（细节见 ListServiceTest）
+        when(listService.addProblems("l1", List.of("p1", "p2"))).thenReturn(new BatchVO(1));
 
         assertThat(service.addToList(List.of("p1", "p2"), "l1").affected()).isEqualTo(1);
-        verify(problemListItemMapper).insertIgnoreBatch("l1", List.of("p2"), 7);
+        verify(listService).addProblems("l1", List.of("p1", "p2"));
+        verify(problemListItemMapper, never()).insertIgnoreBatch(anyString(), anyList(), anyInt());
     }
 
     @Test

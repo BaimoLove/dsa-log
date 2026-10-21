@@ -7,4 +7,53 @@
         SELECT COUNT(*) FROM problem_list WHERE id = #{id} AND deleted = 0
     </select>
 
+    <!--
+      进度一律现算，不缓存计数：题目删了、标记已刷了都不会留下残留数字。
+
+      三个容易写错的地方：
+      1. total 用 COUNT(p.id) 而非 COUNT(*)。题目逻辑删除后 LEFT JOIN 仍产出一行
+         p.id 为 NULL 的占位行，COUNT(*) 会把它算进分母。
+      2. 已删题目的过滤必须写在 ON 上（p.deleted = 0），不能挪进 WHERE：
+         挪进去会让 LEFT JOIN 退化成 INNER JOIN，空题单直接从结果里消失。
+      3. EXPLAIN 是 Using temporary; Using filesort —— 分组发生在 JOIN 之后，
+         idx_deleted_sort 只能帮驱动表过滤（ref），省不掉临时表。题单量级是几十个，
+         这个代价可以忽略，所以刻意维持「一条 SQL」；真到上千个题单，
+         再拆成「一条查题单（走索引天然有序）+ 一条 GROUP BY list_id 出计数」。
+    -->
+    <sql id="progressColumns">
+        l.id, l.name, l.description, l.color, l.sort_order, l.created_at, l.updated_at,
+        COUNT(p.id) AS total,
+        SUM(CASE WHEN p.status = 'solved' THEN 1 ELSE 0 END) AS solved
+    </sql>
+
+    <sql id="progressJoins">
+        FROM problem_list l
+        LEFT JOIN problem_list_item li ON li.list_id = l.id
+        LEFT JOIN problem p ON p.id = li.problem_id AND p.deleted = 0
+    </sql>
+
+    <!-- 按主键分组，其余列函数依赖于主键；仍显式列全，不依赖 ONLY_FULL_GROUP_BY 的宽容 -->
+    <sql id="progressGroupBy">
+        GROUP BY l.id, l.name, l.description, l.color, l.sort_order, l.created_at, l.updated_at
+    </sql>
+
+    <select id="selectAllWithProgress" resultType="com.baimo.dsalogserver.vo.ListRow">
+        SELECT <include refid="progressColumns"/>
+        <include refid="progressJoins"/>
+        WHERE l.deleted = 0
+        <include refid="progressGroupBy"/>
+        ORDER BY l.sort_order ASC, l.created_at ASC
+    </select>
+
+    <select id="selectOneWithProgress" resultType="com.baimo.dsalogserver.vo.ListRow">
+        SELECT <include refid="progressColumns"/>
+        <include refid="progressJoins"/>
+        WHERE l.deleted = 0 AND l.id = #{id}
+        <include refid="progressGroupBy"/>
+    </select>
+
+    <select id="nextSortOrder" resultType="int">
+        SELECT IFNULL(MAX(sort_order) + 1, 0) FROM problem_list WHERE deleted = 0
+    </select>
+
 </mapper>

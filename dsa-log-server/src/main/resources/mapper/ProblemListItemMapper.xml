@@ -12,6 +12,14 @@
         <foreach collection="problemIds" item="id" open="(" separator="," close=")">#{id}</foreach>
     </delete>
 
+    <delete id="deleteByListId">
+        DELETE FROM problem_list_item WHERE list_id = #{listId}
+    </delete>
+
+    <delete id="deleteOne">
+        DELETE FROM problem_list_item WHERE list_id = #{listId} AND problem_id = #{problemId}
+    </delete>
+
     <select id="nextSortOrder" resultType="int">
         SELECT IFNULL(MAX(sort_order) + 1, 0) FROM problem_list_item WHERE list_id = #{listId}
     </select>

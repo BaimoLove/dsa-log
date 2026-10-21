@@ -53,15 +53,26 @@ CREATE TABLE IF NOT EXISTS `problem_tag` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='题目标签关联';
 
 -- 4. 题单
+-- M5.5 变更：新增 color / sort_order。已建过库的不用重建，执行：
+--   ALTER TABLE `problem_list`
+--     ADD COLUMN `color` VARCHAR(16) NOT NULL DEFAULT '#6366f1' COMMENT '卡片主题色' AFTER `description`,
+--     ADD COLUMN `sort_order` INT NOT NULL DEFAULT 0 COMMENT '看板顺序，越小越靠前' AFTER `color`,
+--     DROP INDEX `idx_deleted_created`,
+--     ADD KEY `idx_deleted_sort` (`deleted`,`sort_order`,`created_at`);
 CREATE TABLE IF NOT EXISTS `problem_list` (
   `id`          VARCHAR(36)  NOT NULL,
   `name`        VARCHAR(64)  NOT NULL,
   `description` VARCHAR(512) NULL,
+  `color`       VARCHAR(16)  NOT NULL DEFAULT '#6366f1' COMMENT '卡片主题色，取值来自前端色板',
+  `sort_order`  INT          NOT NULL DEFAULT 0          COMMENT '看板顺序，越小越靠前',
   `created_at`  DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   `updated_at`  DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
   `deleted`     TINYINT UNSIGNED NOT NULL DEFAULT 0,
   PRIMARY KEY (`id`),
-  KEY `idx_deleted_created` (`deleted`,`created_at`)
+  -- idx_deleted_sort：看板的访问路径是「WHERE 等值 + 按 sort_order/created_at 有序」，
+  -- 等值前缀在前、有序键在后。注意进度查询带 GROUP BY，实际仍会走临时表分组，
+  -- 这条索引买到的是驱动表的顺序扫描与有序输出，不是「完全没有 filesort」
+  KEY `idx_deleted_sort` (`deleted`,`sort_order`,`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='题单';
 
 -- 5. 题单-题目

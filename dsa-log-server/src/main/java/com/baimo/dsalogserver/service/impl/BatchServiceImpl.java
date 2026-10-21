@@ -1,18 +1,19 @@
 package com.baimo.dsalogserver.service.impl;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.baimo.dsalogserver.common.BatchIds;
 import com.baimo.dsalogserver.common.BizException;
 import com.baimo.dsalogserver.common.TimeUtil;
 import com.baimo.dsalogserver.entity.Problem;
 import com.baimo.dsalogserver.entity.ReviewRecord;
 import com.baimo.dsalogserver.entity.Tag;
 import com.baimo.dsalogserver.mapper.ProblemListItemMapper;
-import com.baimo.dsalogserver.mapper.ProblemListMapper;
 import com.baimo.dsalogserver.mapper.ProblemMapper;
 import com.baimo.dsalogserver.mapper.ProblemTagMapper;
 import com.baimo.dsalogserver.mapper.ReviewRecordMapper;
 import com.baimo.dsalogserver.mapper.TagMapper;
 import com.baimo.dsalogserver.service.BatchService;
+import com.baimo.dsalogserver.service.ListService;
 import com.baimo.dsalogserver.service.ReviewScheduler;
 import com.baimo.dsalogserver.vo.BatchVO;
 import lombok.RequiredArgsConstructor;
@@ -37,22 +38,20 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class BatchServiceImpl implements BatchService {
 
-    /** 单次批量上限。与前端「本页全选」的量级匹配，超出说明调用方分页逻辑有问题 */
-    private static final int MAX_BATCH = 500;
-
+    /** 标签单次上限比 id 更紧：一次给一道题挂 20 个标签已经没有意义 */
     private static final int MAX_TAGS_PER_BATCH = 20;
 
     private final ProblemMapper problemMapper;
     private final ProblemTagMapper problemTagMapper;
     private final ProblemListItemMapper problemListItemMapper;
-    private final ProblemListMapper problemListMapper;
     private final TagMapper tagMapper;
     private final ReviewRecordMapper reviewRecordMapper;
+    private final ListService listService;
 
     @Override
     @Transactional
     public BatchVO markSolved(List<String> ids) {
-        List<String> targets = normalizeIds(ids);
+        List<String> targets = BatchIds.normalize(ids);
         List<Problem> rows = problemMapper.selectByIdsForUpdate(targets);
         if (rows.isEmpty()) {
             return new BatchVO(0);
@@ -86,7 +85,7 @@ public class BatchServiceImpl implements BatchService {
     @Override
     @Transactional
     public BatchVO markUnsolved(List<String> ids) {
-        List<String> targets = normalizeIds(ids);
+        List<String> targets = BatchIds.normalize(ids);
         List<Problem> rows = problemMapper.selectByIdsForUpdate(targets);
         List<Problem> solved = rows.stream().filter(p -> "solved".equals(p.getStatus())).toList();
         if (solved.isEmpty()) {
@@ -108,7 +107,7 @@ public class BatchServiceImpl implements BatchService {
     @Override
     @Transactional
     public BatchVO addTags(List<String> ids, List<String> tagIds) {
-        List<String> targets = normalizeIds(ids);
+        List<String> targets = BatchIds.normalize(ids);
         List<String> wanted = normalizeTagIds(tagIds);
 
         // 只挂库里真实存在的标签，与单条 replaceTags 的静默过滤保持一致
@@ -135,33 +134,15 @@ public class BatchServiceImpl implements BatchService {
     @Override
     @Transactional
     public BatchVO addToList(List<String> ids, String listId) {
-        List<String> targets = normalizeIds(ids);
-        String targetList = listId == null ? "" : listId.trim();
-        if (targetList.isEmpty()) {
-            throw BizException.invalid("listId 不能为空");
-        }
-        if (problemListMapper.countAlive(targetList) == 0) {
-            throw BizException.notFound("题单");
-        }
-
-        List<String> existing = problemMapper.selectExistingIds(targets);
-        if (existing.isEmpty()) {
-            return new BatchVO(0);
-        }
-        List<String> missing = problemListItemMapper.selectMissingIds(targetList, existing);
-        if (missing.isEmpty()) {
-            return new BatchVO(0);
-        }
-
-        int startOrder = problemListItemMapper.nextSortOrder(targetList);
-        problemListItemMapper.insertIgnoreBatch(targetList, missing, startOrder);
-        return new BatchVO(missing.size());
+        // 委托给 ListService：题单相关的「查缺失 → 取序号 → INSERT IGNORE」只保留一份实现，
+        // 题单端点与本端点调出完全一致的 affected 口径。事务边界由被委托方自己声明。
+        return listService.addProblems(listId, ids);
     }
 
     @Override
     @Transactional
     public BatchVO remove(List<String> ids) {
-        List<String> targets = normalizeIds(ids);
+        List<String> targets = BatchIds.normalize(ids);
         // 先按库里真实存在的行筛一遍，affected 才等于真正删掉的条数
         List<String> existing = problemMapper.selectExistingIds(targets);
         if (existing.isEmpty()) {
@@ -192,25 +173,7 @@ public class BatchServiceImpl implements BatchService {
         return r;
     }
 
-    /** 归一化：去 null、trim、去重；空集合是参数错误，超上限是数据量超限，两种码不混用 */
-    private static List<String> normalizeIds(List<String> ids) {
-        if (ids == null) {
-            throw BizException.invalid("ids 不能为空");
-        }
-        List<String> cleaned = ids.stream()
-                .filter(Objects::nonNull)
-                .map(String::trim)
-                .filter(s -> !s.isEmpty())
-                .distinct()
-                .toList();
-        if (cleaned.isEmpty()) {
-            throw BizException.invalid("ids 不能为空");
-        }
-        if (cleaned.size() > MAX_BATCH) {
-            throw BizException.payloadTooLarge("单次批量最多 " + MAX_BATCH + " 条");
-        }
-        return cleaned;
-    }
+    /** 归一化放进 BatchIds：题单端点也要同一套「空集合 400 / 超限 413」口径 */
 
     private static List<String> normalizeTagIds(List<String> tagIds) {
         if (tagIds == null) {
