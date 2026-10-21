@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { reactive, ref } from 'vue'
 import { problemRepo } from '@/repositories'
-import type { CreateProblemInput, ProblemQuery, UpdateProblemInput } from '@/types/repository'
+import type { BatchResult, CreateProblemInput, ProblemQuery, UpdateProblemInput } from '@/types/repository'
 import type { Problem } from '@/types/models'
 import type { SortOption } from '@/types/enums'
 
@@ -56,6 +56,12 @@ export const useProblemStore = defineStore('problem', () => {
     page.value = 1
   }
 
+  /** 题单详情页用：进入时设 id，离开时传 undefined 复位，避免污染题库页的筛选 */
+  function setListId(listId?: string): void {
+    query.listId = listId
+    page.value = 1
+  }
+
   function setPage(next: number): void {
     page.value = Math.min(Math.max(1, next), totalPages.value)
   }
@@ -107,6 +113,35 @@ export const useProblemStore = defineStore('problem', () => {
     return updated
   }
 
+  /**
+   * 四个批量操作统一「先落库、再整页重拉」：批量会改变排序与筛选命中情况，
+   * 局部 patch 容易和 total 对不上，重拉一次最省心（本地库开销可忽略）。
+   * 返回值原样透出 BatchResult，撤销条需要里面的 opId / undoExpiresAt。
+   */
+  async function bulkMarkSolved(ids: string[]): Promise<BatchResult> {
+    const res = await problemRepo.bulkMarkSolved(ids)
+    await load()
+    return res
+  }
+
+  async function bulkAddTags(ids: string[], tagIds: string[]): Promise<BatchResult> {
+    const res = await problemRepo.bulkAddTags(ids, tagIds)
+    await load()
+    return res
+  }
+
+  async function bulkAddToList(ids: string[], listId: string): Promise<BatchResult> {
+    const res = await problemRepo.bulkAddToList(ids, listId)
+    await load()
+    return res
+  }
+
+  async function bulkRemove(ids: string[]): Promise<BatchResult> {
+    const res = await problemRepo.bulkRemove(ids)
+    await load()
+    return res
+  }
+
   return {
     items,
     total,
@@ -120,6 +155,7 @@ export const useProblemStore = defineStore('problem', () => {
     setStatuses,
     setKeyword,
     setSort,
+    setListId,
     setPage,
     patchLocal,
     dropLocal,
@@ -129,5 +165,9 @@ export const useProblemStore = defineStore('problem', () => {
     removeProblem,
     markSolved,
     markUnsolved,
+    bulkMarkSolved,
+    bulkAddTags,
+    bulkAddToList,
+    bulkRemove,
   }
 })

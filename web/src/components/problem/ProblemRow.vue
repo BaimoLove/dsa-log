@@ -8,12 +8,20 @@ import TagChip from './TagChip.vue'
 import type { Problem } from '@/types/models'
 import { formatDate, fromNow } from '@/utils/date'
 
-const props = defineProps<{ problem: Problem; busy?: boolean }>()
+const props = defineProps<{
+  problem: Problem
+  busy?: boolean
+  selectable?: boolean
+  selected?: boolean
+  /** 删除按钮的语义由调用方决定：题库页是「删除」，题单详情页是「移出题单」 */
+  removeTitle?: string
+}>()
 
 const emit = defineEmits<{
   solve: [id: string]
   unsolve: [id: string]
   remove: [problem: Problem]
+  toggle: [id: string]
 }>()
 
 const solved = computed(() => props.problem.status === 'solved')
@@ -28,7 +36,20 @@ const meta = computed(() => {
 </script>
 
 <template>
-  <div class="flex flex-col gap-2.5 px-4 py-3 transition-colors hover:bg-slate-50/70 sm:flex-row sm:items-center sm:gap-4">
+  <div
+    class="flex flex-col gap-2.5 px-4 py-3 transition-colors sm:flex-row sm:items-center sm:gap-4"
+    :class="selected ? 'bg-blue-50/60 hover:bg-blue-50' : 'hover:bg-slate-50/70'"
+  >
+    <!-- 选择框独立成一列：整行可点容易误触标题链接，勾选区域只放这里 -->
+    <label v-if="selectable" class="flex shrink-0 cursor-pointer items-center" :title="selected ? '取消选择' : '选择此题'">
+      <input
+        type="checkbox"
+        class="size-4 cursor-pointer rounded border-slate-300 accent-blue-600"
+        :checked="selected"
+        @change="emit('toggle', problem.id)"
+      />
+    </label>
+
     <div class="min-w-0 flex-1">
       <div class="flex flex-wrap items-center gap-2">
         <RouterLink
@@ -76,7 +97,7 @@ const meta = computed(() => {
           <Pencil class="size-3.5" />
         </BaseButton>
       </RouterLink>
-      <BaseButton size="sm" variant="ghost" title="删除" @click="emit('remove', problem)">
+      <BaseButton size="sm" variant="ghost" :title="removeTitle ?? '删除'" @click="emit('remove', problem)">
         <Trash2 class="size-3.5 text-slate-400" />
       </BaseButton>
     </div>
