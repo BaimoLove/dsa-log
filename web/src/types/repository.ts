@@ -164,3 +164,7 @@ export interface OverviewStats {
   solvedProblems: number
   listProgress: ListProgress[]
 }
+
+export interface StatsRepository {
+  overview(): Promise<OverviewStats>
+}
