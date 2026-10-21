@@ -1,0 +1,23 @@
+# ---- 前端：依赖与构建产物 ----
+web/node_modules
+web/dist
+web/dist-ssr
+web/.vite
+web/*.local
+
+# ---- 后端 ----
+# 规则收敛在 dsa-log-server/.gitignore（target、.idea、HELP.md 等）
+
+# ---- 本地工具 / 会话数据 ----
+# .workbuddy 存放本地会话与记忆数据，不入库
+.workbuddy
+
+# ---- 编辑器 ----
+.idea
+.vscode/*
+!.vscode/extensions.json
+
+# ---- 系统 ----
+.DS_Store
+Thumbs.db
+*.log
