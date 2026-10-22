@@ -119,8 +119,11 @@ CREATE TABLE IF NOT EXISTS `app_setting` (
   PRIMARY KEY (`setting_key`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='应用配置';
 
--- 初始化配置
-INSERT INTO `app_setting` (`setting_key`,`setting_value`) VALUES
+-- 初始化配置：只补缺失的键，绝不覆盖已有值。
+-- 曾经写的是 ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)，
+-- 而 deploy.sh 每次发版都会跑一遍本文件 —— 结果就是「用户改过的设置，
+-- 下次部署被重置成默认」，而且不会有任何报错，要等到用户发现偏好变了才察觉。
+-- 初始化数据的语义只能是「缺失才插入」，INSERT IGNORE 正合适。
+INSERT IGNORE INTO `app_setting` (`setting_key`,`setting_value`) VALUES
   ('review.dailyLimit','20'), ('review.intervals','[1,3,7,15]'),
-  ('ui.pageSize','20'), ('schema.version','1')
-ON DUPLICATE KEY UPDATE `setting_value`=VALUES(`setting_value`);
+  ('ui.pageSize','20'), ('schema.version','1');

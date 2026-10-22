@@ -128,6 +128,11 @@ deploy/deploy.sh root@IP
 它只「创建不存在的表」，**不会给已有表补列**——以后加字段要单独执行 `ALTER`
 （语句写在 `schema.sql` 的注释里）。
 
+初始化数据（`app_setting` 里的复习上限、每页条数等）用的是 `INSERT IGNORE`，
+**只补缺失的键，不覆盖已有值**。所以每次发版不会把用户改过的偏好重置回默认
+（早期版本用的是 `ON DUPLICATE KEY UPDATE`，正是这个行为导致了「设置莫名其妙
+变回默认」）。
+
 > 这台机器上 MySQL 容器叫 `mysql8`，脚本从 `/opt/dsa/api/.env` 的
 > `MYSQL_CONTAINER` 读，缺省也是 `mysql8`。
 
