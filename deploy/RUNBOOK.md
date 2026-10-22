@@ -166,7 +166,12 @@ vmstat 1 5         # si/so 必须是 0，非 0 说明已经在换页
 docker stats --no-stream
 ```
 
-经验值：MySQL ~300MB、dsa-api ~400MB（堆 448m 打满）、dsa-nginx ~15MB、系统 ~250MB。
+实测基线（阿里云 2G，`free -m` 的 total 是 **1735MB**，不是 2048）：
+系统+Docker ~530MB、MySQL 稳态 400–450MB、dsa-api 500–650MB、dsa-nginx 15–20MB，
+合计约 **1490MB**，余 245MB。
+
+> MySQL 冷启动只有 35MB，别拿它做容量规划——InnoDB buffer pool 是惰性分配的，
+> 数据攒起来后会爬到 400MB 以上。上限按 `--memory=512m` 设，稳态刚好兜住。
 
 ---
 

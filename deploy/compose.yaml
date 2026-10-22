@@ -23,8 +23,10 @@ services:
     container_name: dsa-api
     network_mode: host
     restart: unless-stopped
-    mem_limit: 900m
-    memswap_limit: 900m
+    # 实测机器 total 只有 1735MB（标称 2G，内核/虚拟化留了一部分）。
+    # 800m = 堆 448 + Metaspace 192 + 直接内存 64 + 线程栈，留了一点余量
+    mem_limit: 800m
+    memswap_limit: 800m
     environment:
       TZ: Asia/Shanghai
       # 口令走 .env（chmod 600），不写进 yml 进版本库。
@@ -56,7 +58,7 @@ services:
     container_name: dsa-nginx
     network_mode: host
     restart: unless-stopped
-    mem_limit: 64m        # alpine 版实测常驻 10–20MB，64m 足够且能挡住异常膨胀
+    mem_limit: 48m        # alpine 版实测常驻 15–20MB，48m 能挡住异常膨胀又不占预算
     depends_on:
       - api
     volumes:

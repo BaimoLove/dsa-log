@@ -75,7 +75,16 @@ scp -q "${JAR}" "${TARGET}:/opt/dsa/api/app.jar"
 echo "==> 同步前端静态资源"
 # --delete 让被删掉的旧 chunk 一起清走，否则 dist 里会越堆越多。
 # 权限跟着统一：nginx 容器里是非 root 用户，目录必须可读可进入
-rsync -az --delete --chmod=D755,F644 "${DIST}/" "${TARGET}:/opt/dsa/web/dist/"
+if command -v rsync >/dev/null 2>&1; then
+    rsync -az --delete --chmod=D755,F644 "${DIST}/" "${TARGET}:/opt/dsa/web/dist/"
+else
+    # Windows 的 Git Bash 默认没有 rsync，这里退成 tar 管道：
+    # 先清空远端 dist（只删内部，不删目录本身），再整包解过去。
+    echo "    （本机无 rsync，改用 tar 管道同步）"
+    ssh "${TARGET}" "mkdir -p /opt/dsa/web/dist && find /opt/dsa/web/dist -mindepth 1 -delete"
+    tar -C "${DIST}" -czf - . \
+        | ssh "${TARGET}" "tar -xzf - -C /opt/dsa/web/dist && chmod -R a+rX /opt/dsa/web/dist"
+fi
 
 echo "==> 重建容器"
 ssh "${TARGET}" "cd /opt/dsa/api && IMAGE_TAG=${TAG} docker compose up -d --build"
