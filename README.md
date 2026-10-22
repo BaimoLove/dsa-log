@@ -109,7 +109,6 @@ Controller → Service（接口） → ServiceImpl（实现）→ Mapper（MyBat
 
 ```
 .
-├── PLAN.md                       计划、DDL、API 契约、里程碑记录
 ├── web/                          前端
 │   ├── src/
 │   │   ├── api/                  HTTP client 与端点清单
@@ -197,7 +196,7 @@ cd dsa-log-server && ./mvnw -o test
 cd web && npm run test:parity
 ```
 
-对拍测试是这套双轨设计的验收手段：以 `title` 为稳定键比较，避免 id 生成方式与时间戳毫秒差异造成的假失败。开发过程中它抓出过几个只靠人工点页面发现不了的问题（详见 `PLAN.md`）。
+对拍测试是这套双轨设计的验收手段：以 `title` 为稳定键比较，避免 id 生成方式与时间戳毫秒差异造成的假失败。开发过程中它抓出过几个只靠人工点页面发现不了的问题——比如同一毫秒内写入导致的时间戳并列、批量更新时 NULL 字段被静默排除出 SET 子句。
 
 ---
 

@@ -3,7 +3,7 @@ import { routes } from './routes'
 
 /**
  * hash 模式：部署到任意子路径/目录都不需要 nginx rewrite。
- * 上线后首次打开是空库，按 docs/PLAN.md 第二章做一次数据迁移。
+ * 上线后首次打开是空库时，先导入一份备份，或从题库页手动建题。
  */
 export const router = createRouter({
   history: createWebHashHistory(import.meta.env.BASE_URL),

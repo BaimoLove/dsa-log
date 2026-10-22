@@ -1,7 +1,7 @@
 import type { RouteRecordRaw } from 'vue-router'
 
 /**
- * 页面清单（与 docs/PLAN.md 第五节一致）。
+ * 页面清单。
  * meta.title 用于侧栏与浏览器标题；meta.icon 对应 lucide 图标名，由 SideBar 映射。
  */
 export const routes: RouteRecordRaw[] = [

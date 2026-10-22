@@ -1,7 +1,7 @@
 # 上线 Runbook（M8.5）
 
 阿里云 2G 单机。**宿主只装 Docker**：nginx、Spring Boot、MySQL 全在容器里。
-本文件是**可逐条复制执行**的清单，不是设计文档；设计取舍见 `PLAN.md` 第九章。
+本文件是**可逐条复制执行**的清单，不是设计文档；设计取舍见 README 的「几个设计取舍」一节。
 
 > 纪律：服务器上不跑 `mvn`、不跑 `npm`，也不装 nginx / mysql 客户端。
 > 构建全在本机，运维命令一律走 `docker exec`。2G 机器编译 Spring Boot 极易被 OOM killer 干掉。

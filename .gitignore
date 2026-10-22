@@ -17,6 +17,10 @@ web/*.local
 .vscode/*
 !.vscode/extensions.json
 
+# ---- 私有文档 ----
+# 开发计划与进度记录，不入公开仓库
+PLAN.md
+
 # ---- 系统 ----
 .DS_Store
 Thumbs.db
