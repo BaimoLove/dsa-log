@@ -67,20 +67,39 @@ chmod 600 /opt/dsa/api/.env
 **必须在首次启动前做**。compose 会把 `.htpasswd` 挂进容器，而 Docker 遇到「宿主机上不存在的文件」
 会建一个同名**目录**，nginx 随即报 `auth_basic_user_file` 是个目录——从报错完全看不出根因。
 
+`.htpasswd` 是 Apache 定的格式，nginx 也读它（`auth_basic_user_file`）。生成密码哈希有两条路，
+**优先 A**：不需要拉任何镜像。
+
+**方式 A：宿主有 openssl（多数系统自带，因为有 ssh）**
+
+```bash
+mkdir -p /opt/dsa/nginx
+printf "dsa:%s\n" "$(openssl passwd -apr1 '换成访问密码')" > /opt/dsa/nginx/.htpasswd
+```
+
+**方式 B：宿主没有 openssl，借一次性容器的 htpasswd**（跑完 `--rm` 自删，不常驻）
+
 ```bash
 mkdir -p /opt/dsa/nginx
 docker run --rm httpd:2.4-alpine htpasswd -nbB dsa '换成访问密码' > /opt/dsa/nginx/.htpasswd
-# worker 进程在容器内是 nginx 用户（gid 101），属主必须是 root、组给 101 才能读
-chown root:101 /opt/dsa/nginx/.htpasswd
-chmod 640 /opt/dsa/nginx/.htpasswd
-cat /opt/dsa/nginx/.htpasswd     # 应该是 dsa:$2y$05$... 一行
 ```
 
-- `-B` 是 bcrypt，比 `apr1` 强；nginx stable 线支持 `$2y$`。
-- 万一启动后密码总是不对（个别镜像的 crypt 实现对 bcrypt 支持不全），退回 `-nb`（apr1）。
-- **如果日志里出现 `Permission denied` 读 .htpasswd**，说明宿主上 gid 101 是别的组：
-  改成 `chmod 644` 即可（bcrypt 哈希泄露也难以爆破，单机私人站点可接受）。
-- 换密码：重跑 `htpasswd` 那条覆盖文件，再 `docker restart dsa-nginx`。
+两种方式都要补权限（容器内 nginx worker 是 gid 101，属主 root + 组 101 才读得到）：
+
+```bash
+chown root:101 /opt/dsa/nginx/.htpasswd
+chmod 640 /opt/dsa/nginx/.htpasswd
+cat /opt/dsa/nginx/.htpasswd     # A: dsa:$apr1$...   B: dsa:$2y$05$...
+```
+
+| 格式 | 强度 | 兼容性 |
+| --- | --- | --- |
+| `$apr1$`（方式 A） | MD5 + 盐 + 1000 次迭代，够单用户私人站点 | nginx **一定**支持 |
+| `$2y$05$`（方式 B，bcrypt） | 更强 | alpine 版 nginx 的 crypt 实现偶有不支持，表现为「密码对但一直 401」 |
+
+- **启动后一直弹 401 且密码确认没错** → 八成是 bcrypt 不被该镜像支持，换方式 A 重生成，再 `docker restart dsa-nginx`。
+- **日志里出现 `Permission denied` 读 .htpasswd** → 宿主上 gid 101 被别的组占了：改成 `chmod 644`（哈希泄露也难以爆破，私人站点可接受）。
+- 换密码：重跑生成命令覆盖文件，再 `docker restart dsa-nginx`。
 
 > 不需要 `systemctl`、`/etc/nginx/`、`www-data` 这些宿主概念——nginx 在容器里。
 

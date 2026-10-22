@@ -45,13 +45,18 @@ if ! ssh "${TARGET}" "test -f /opt/dsa/nginx/.htpasswd"; then
     cat >&2 <<EOF
 !!! 缺少 /opt/dsa/nginx/.htpasswd（basic auth 账号文件），nginx 会起不来。
 
-先生成（不需要宿主装 htpasswd，用一次性容器，三步）：
+先生成，二选一（宿主有 openssl 就不用拉镜像，细节见 RUNBOOK 第 2 节）：
 
-  ssh ${TARGET} 'mkdir -p /opt/dsa/nginx'
-  ssh ${TARGET} 'docker run --rm httpd:2.4-alpine htpasswd -nbB dsa "换成访问密码" > /opt/dsa/nginx/.htpasswd'
-  ssh ${TARGET} 'chown root:101 /opt/dsa/nginx/.htpasswd && chmod 640 /opt/dsa/nginx/.htpasswd'
+  有 openssl：
+    ssh ${TARGET} 'mkdir -p /opt/dsa/nginx'
+    ssh ${TARGET} 'openssl passwd -apr1 "换成访问密码" | sed "s/^/dsa:/" > /opt/dsa/nginx/.htpasswd'
 
-（gid 101 是容器内 nginx worker 的组；宿主上若冲突，退成 chmod 644）
+  没有 openssl：
+    ssh ${TARGET} 'mkdir -p /opt/dsa/nginx'
+    ssh ${TARGET} 'docker run --rm httpd:2.4-alpine htpasswd -nbB dsa "换成访问密码" > /opt/dsa/nginx/.htpasswd'
+
+  补权限（两种都要）：
+    ssh ${TARGET} 'chown root:101 /opt/dsa/nginx/.htpasswd && chmod 640 /opt/dsa/nginx/.htpasswd'
 
 EOF
     exit 1
