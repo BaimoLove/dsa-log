@@ -22,8 +22,8 @@ docker stats --no-stream
 | --- | --- | --- |
 | 80 端口 | 空闲 | 有别的服务占着就先停掉（本方案不再用宿主 nginx） |
 | 3306 | `127.0.0.1:3306` | 若是 `0.0.0.0:3306` → 重建 MySQL 容器只绑回环 |
-| MySQL 容器名 | 记下来（默认 `mysql`） | 不是 `mysql` 就在 `.env` 里设 `MYSQL_CONTAINER` |
-| MySQL 内存 | 有 limit | `docker update --memory=512m --memory-swap=1g --restart=always mysql` |
+| MySQL 容器名 | 记下来（常见是 `mysql8` 之类，不一定是 `mysql`） | 不叫 `mysql` 时在 `/opt/dsa/api/.env` 加 `MYSQL_CONTAINER=<容器名>`，备份脚本读它 |
+| MySQL 内存 | 有 limit | `docker update --memory=512m --memory-swap=1g --restart=always mysql8   # 换成实际容器名` |
 | MySQL 时区 | `+08:00` | my.cnf 加 `default-time-zone='+08:00'`，重启容器 |
 
 MySQL 容器里再补三项（2G 关键）：
@@ -35,7 +35,7 @@ default-time-zone       = '+08:00'
 ```
 
 ```bash
-docker restart mysql
+docker restart mysql8          # 换成实际容器名
 # Redis 目前无消费方，停掉省 40MB
 docker stop redis
 ```
@@ -123,6 +123,9 @@ EOF
 chmod 644 /etc/cron.d/dsa
 ```
 
+容器名不用手工填：`dump.sh` 会扫 `docker ps` 里镜像名含 mysql 的容器（你的机器上是 `mysql8`）。
+要指定就在 `/opt/dsa/api/.env` 加 `MYSQL_CONTAINER=mysql8`。
+
 手动验一次，别等出事才发现脚本写错：
 
 ```bash
@@ -149,8 +152,9 @@ chmod 644 /etc/cron.d/dsa
    ```bash
    docker stop dsa-api
    set -a; . /opt/dsa/api/.env; set +a
+   MYSQL_CONTAINER="${MYSQL_CONTAINER:-mysql8}"      # 换成实际容器名
    gunzip -c /opt/dsa/backup/dsa_log-YYYYmmdd-HHMMSS.sql.gz \
-     | docker exec -i -e MYSQL_PWD="$DB_PASSWORD" mysql mysql -u"$DB_USER" dsa_log
+     | docker exec -i -e MYSQL_PWD="$DB_PASSWORD" "$MYSQL_CONTAINER" mysql -u"$DB_USER" dsa_log
    docker start dsa-api
    ```
 
@@ -183,7 +187,7 @@ deploy/rollback.sh root@IP 202610211530   # 切到指定 tag（秒级，不重�
 ```bash
 docker logs --tail 120 dsa-api       # 应用（prod 已关 SQL 日志，只剩业务日志）
 docker logs --tail 80 dsa-nginx      # nginx 的 access/error 都在这里（写的是 /dev/stdout）
-docker logs --tail 50 mysql
+docker logs --tail 50 mysql8         # 换成实际容器名
 ```
 
 | 症状 | 先查 | 常见原因 |
