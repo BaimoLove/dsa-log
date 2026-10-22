@@ -118,9 +118,18 @@ deploy/deploy.sh root@IP
 
 依次做：本机构建后端 + 前端 → 建远端目录 → 同步
 `Dockerfile`/`compose.yaml`/`nginx/dsa.conf` → **校验 `.htpasswd` 存在** → scp jar
-→ 同步 dist → 远端 `docker compose up -d --build` → 轮询健康检查。
+→ 同步 dist → **建库建表（`schema.sql`）** → 远端 `docker compose up -d --build`
+→ 轮询健康检查。
 
 `.htpasswd` 缺失时脚本会直接退出并打出生成命令，不会让你踩「Docker 把文件建成目录」那个坑。
+
+**建库是自动的**：`schema.sql` 里是 `CREATE DATABASE IF NOT EXISTS` + 全部
+`CREATE TABLE IF NOT EXISTS`，幂等，所以每次发版都会顺手跑一遍。
+它只「创建不存在的表」，**不会给已有表补列**——以后加字段要单独执行 `ALTER`
+（语句写在 `schema.sql` 的注释里）。
+
+> 这台机器上 MySQL 容器叫 `mysql8`，脚本从 `/opt/dsa/api/.env` 的
+> `MYSQL_CONTAINER` 读，缺省也是 `mysql8`。
 
 首次会拉两个镜像：`eclipse-temurin:17-jre-alpine`（约 110MB）、`nginx:stable-alpine`（约 50MB）。
 拉不动就在服务器配镜像加速后重启 docker（会重启所有容器，挑低峰做）。

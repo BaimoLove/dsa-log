@@ -84,6 +84,17 @@ else
         | ssh "${TARGET}" "tar -xzf - -C /opt/dsa/web/dist && chmod -R a+rX /opt/dsa/web/dist"
 fi
 
+echo "==> 确保数据库与表结构"
+# schema.sql 是幂等的（CREATE DATABASE IF NOT EXISTS + 全部 CREATE TABLE IF NOT EXISTS），
+# 所以每次发版都跑一遍：首次部署自动建库，之后等于一次廉价的结构校验。
+# 注意它只「创建不存在的表」，不会给已有表补列——加列要单独写 ALTER（PLAN/schema.sql 注释里有）。
+scp -q "${ROOT}/dsa-log-server/src/main/resources/db/schema.sql" "${TARGET}:/opt/dsa/api/schema.sql"
+ssh "${TARGET}" 'set -a; . /opt/dsa/api/.env; set +a; \
+    docker exec -i -e MYSQL_PWD="$DB_PASSWORD" "${MYSQL_CONTAINER:-mysql8}" \
+    mysql -u"$DB_USER" < /opt/dsa/api/schema.sql' \
+    || { echo "!!! 建库失败，检查 .env 里的口令与容器名" >&2; exit 1; }
+echo "    表结构就绪"
+
 echo "==> 重建容器"
 ssh "${TARGET}" "cd /opt/dsa/api && IMAGE_TAG=${TAG} docker compose up -d --build"
 
