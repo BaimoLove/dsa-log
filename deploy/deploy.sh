@@ -35,13 +35,47 @@ for f in "${JAR}" "${DIST}/index.html"; do
     fi
 done
 
+echo "==> 远端目录与配置"
+ssh "${TARGET}" "mkdir -p /opt/dsa/api/dump /opt/dsa/web/dist /opt/dsa/nginx /opt/dsa/backup"
+
+# 首次上线最容易踩的坑：compose 把 .htpasswd 挂进容器，而 Docker 遇到
+# 「宿主机上不存在的文件」会建一个**同名目录**，nginx 随即报
+# auth_basic_user_file 是个目录 —— 报错信息完全指不到根因。所以先挡一道。
+if ! ssh "${TARGET}" "test -f /opt/dsa/nginx/.htpasswd"; then
+    cat >&2 <<EOF
+!!! 缺少 /opt/dsa/nginx/.htpasswd（basic auth 账号文件），nginx 会起不来。
+
+先生成（不需要宿主装 htpasswd，用一次性容器，三步）：
+
+  ssh ${TARGET} 'mkdir -p /opt/dsa/nginx'
+  ssh ${TARGET} 'docker run --rm httpd:2.4-alpine htpasswd -nbB dsa "换成访问密码" > /opt/dsa/nginx/.htpasswd'
+  ssh ${TARGET} 'chown root:101 /opt/dsa/nginx/.htpasswd && chmod 640 /opt/dsa/nginx/.htpasswd'
+
+（gid 101 是容器内 nginx worker 的组；宿主上若冲突，退成 chmod 644）
+
+EOF
+    exit 1
+fi
+
+# 编排与 nginx 配置跟着仓库走：改完配置直接发版，不会出现「服务器上还是旧配置」
+scp -q "${ROOT}/deploy/Dockerfile" "${ROOT}/deploy/compose.yaml" "${TARGET}:/opt/dsa/api/"
+scp -q "${ROOT}/deploy/nginx/dsa.conf" "${TARGET}:/opt/dsa/nginx/dsa.conf"
+
+# 同样要防「文件被 Docker 建成目录」：万一远端 .htpasswd 是个目录，这里直接说清楚
+if ssh "${TARGET}" "test -d /opt/dsa/nginx/.htpasswd"; then
+    echo "!!! /opt/dsa/nginx/.htpasswd 是个目录（Docker 挂载不存在的文件时会这样建）。" >&2
+    echo "    删除后按第 2 节重新生成：ssh ${TARGET} 'rm -rf /opt/dsa/nginx/.htpasswd'" >&2
+    exit 1
+fi
+
 echo "==> 上传后端 jar（tag ${TAG}）"
 # compose 里 COPY app.jar，所以远端固定叫 app.jar；版本信息靠 image tag 保留
 scp -q "${JAR}" "${TARGET}:/opt/dsa/api/app.jar"
 
 echo "==> 同步前端静态资源"
-# --delete 让被删掉的旧 chunk 一起清走，否则 dist 里会越堆越多
-rsync -az --delete "${DIST}/" "${TARGET}:/opt/dsa/web/dist/"
+# --delete 让被删掉的旧 chunk 一起清走，否则 dist 里会越堆越多。
+# 权限跟着统一：nginx 容器里是非 root 用户，目录必须可读可进入
+rsync -az --delete --chmod=D755,F644 "${DIST}/" "${TARGET}:/opt/dsa/web/dist/"
 
 echo "==> 重建容器"
 ssh "${TARGET}" "cd /opt/dsa/api && IMAGE_TAG=${TAG} docker compose up -d --build"

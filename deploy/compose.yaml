@@ -1,11 +1,21 @@
-# 单服务编排。目录约定见 deploy/RUNBOOK.md：
-#   /opt/dsa/api/{app.jar,Dockerfile,compose.yaml,dump/}
+# 两个容器：api（Spring Boot）+ nginx（静态 + 反代）
 #
-# 四条必配项，漏一条就出事（都在下面标了原因）：
-#   network_mode: host   连不上 127.0.0.1 的 MySQL（容器自己的回环是空的）
-#   TZ                   时区差 8 小时，复习日期全错
-#   logging.max-size     json 日志撑满磁盘，单机 Docker 最常见事故
-#   mem_limit            OOM 拖垮整机 MySQL
+# 目录约定见 deploy/RUNBOOK.md：
+#   /opt/dsa/api/{app.jar, Dockerfile, compose.yaml, .env, dump/}
+#   /opt/dsa/nginx/{dsa.conf, .htpasswd}
+#   /opt/dsa/web/dist/            前端静态（挂进 nginx 容器）
+#   /opt/dsa/backup/              备份输出
+#
+# 为什么两个服务都写 network_mode: host —— 这是本方案唯一不能动的一处：
+#   api  只绑 127.0.0.1:8080（公网流量必须经 nginx），host 网络才能连上宿主回环里的 MySQL
+#   nginx 要反代 127.0.0.1:8080，如果走 bridge，那个 127.0.0.1 是容器自己的回环，反代必然 502
+# 两者共享宿主网络命名空间后，端口就是宿主的端口，nginx 能直接连后端，后端也不用对外开。
+#
+# 其余四条必配项：
+#   TZ                  时区差 8 小时，复习日期全错
+#   logging.max-size    json 日志撑满磁盘，单机 Docker 最常见事故
+#   mem_limit           OOM 拖垮整机 MySQL
+#   restart             reboot 后自动恢复（上线 runbook 里要真做一次 reboot 验证）
 services:
   api:
     build: .
@@ -17,12 +27,15 @@ services:
     memswap_limit: 900m
     environment:
       TZ: Asia/Shanghai
-      # 数据库口令走 .env（chmod 600），不写进 yml 进版本库
+      # 口令走 .env（chmod 600），不写进 yml 进版本库。
+      # ${VAR:?msg} 是刻意的：缺口令时宁可起不来，也不要拿空口令去连库
       DB_USER: ${DB_USER:-root}
       DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD 必须写在同目录的 .env 里}
       DB_NAME: ${DB_NAME:-dsa_log}
+      DB_HOST: ${DB_HOST:-127.0.0.1}
     volumes:
       - /etc/localtime:/etc/localtime:ro
+      # HeapDump 落宿主机：容器重建不丢现场
       - /opt/dsa/api/dump:/app/dump
     logging:
       driver: json-file
@@ -36,3 +49,32 @@ services:
       timeout: 5s
       retries: 3
       start_period: 60s
+
+  nginx:
+    # stable-alpine 跟随当前稳定线；比写死小版本号安全（写死的版本可能已被清理）
+    image: nginx:stable-alpine
+    container_name: dsa-nginx
+    network_mode: host
+    restart: unless-stopped
+    mem_limit: 64m        # alpine 版实测常驻 10–20MB，64m 足够且能挡住异常膨胀
+    depends_on:
+      - api
+    volumes:
+      # 覆盖镜像自带的 default.conf（nginx.conf 里 include conf.d/*.conf）
+      - /opt/dsa/nginx/dsa.conf:/etc/nginx/conf.d/default.conf:ro
+      - /opt/dsa/nginx/.htpasswd:/etc/nginx/.htpasswd:ro
+      # 静态产物只读挂载：deploy.sh 用 rsync 覆盖这个目录，nginx 立刻能读到新文件，不用重启容器
+      - /opt/dsa/web/dist:/usr/share/nginx/html:ro
+      - /etc/localtime:/etc/localtime:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      # 80 被 basic auth 挡着，wget 会拿到 401；用 nc 探端口只判断「在监听」
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 80 || exit 1"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s

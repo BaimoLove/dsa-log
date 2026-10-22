@@ -1,105 +1,88 @@
 # 上线 Runbook（M8.5）
 
-阿里云 2G 单机，nginx 做唯一入口，Spring Boot 与 MySQL 都在 Docker 里。
+阿里云 2G 单机。**宿主只装 Docker**：nginx、Spring Boot、MySQL 全在容器里。
 本文件是**可逐条复制执行**的清单，不是设计文档；设计取舍见 `PLAN.md` 第九章。
 
-> 纪律：服务器上不跑 `mvn`、不跑 `npm`。构建全在本机，服务器只收产物。
-> 2G 机器编译 Spring Boot 极易被 OOM killer 干掉，还会连累 MySQL。
+> 纪律：服务器上不跑 `mvn`、不跑 `npm`，也不装 nginx / mysql 客户端。
+> 构建全在本机，运维命令一律走 `docker exec`。2G 机器编译 Spring Boot 极易被 OOM killer 干掉。
 
 ---
 
-## 0. 开工前必须确认的三件事
-
-| 项 | 怎么确认 | 影响 |
-| --- | --- | --- |
-| 服务器已装 Docker + nginx | `docker -v`、`nginx -v` | 缺则先装 |
-| MySQL 容器已跑且数据在 | `docker ps --format '{{.Names}}\t{{.Status}}'` | app 连它 |
-| 3306 **没有**暴露到 0.0.0.0 | `ss -lntp \| grep 3306` | 暴露即公网裸奔 |
+## 0. 开工前确认
 
 ```bash
-# 一次看全
+docker -v                       # 必须有
+docker compose version          # 需要 v2（命令是 docker compose，不是 docker-compose）
+ss -lntp | grep -E ':80|:3306|:8080'   # 80 应空闲；3306 只能 127.0.0.1；8080 不该有
 docker ps -a --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
-docker inspect mysql --format '{{json .HostConfig.PortBindings}}'
 docker stats --no-stream
-docker exec mysql mysql -uroot -p -e "SELECT VERSION(), @@time_zone, @@character_set_server;"
 ```
 
-处置（按需）：
+| 检查项 | 期望 | 不满足怎么处置 |
+| --- | --- | --- |
+| 80 端口 | 空闲 | 有别的服务占着就先停掉（本方案不再用宿主 nginx） |
+| 3306 | `127.0.0.1:3306` | 若是 `0.0.0.0:3306` → 重建 MySQL 容器只绑回环 |
+| MySQL 容器名 | 记下来（默认 `mysql`） | 不是 `mysql` 就在 `.env` 里设 `MYSQL_CONTAINER` |
+| MySQL 内存 | 有 limit | `docker update --memory=512m --memory-swap=1g --restart=always mysql` |
+| MySQL 时区 | `+08:00` | my.cnf 加 `default-time-zone='+08:00'`，重启容器 |
+
+MySQL 容器里再补三项（2G 关键）：
+
+```
+innodb_buffer_pool_size = 256M
+performance_schema      = OFF
+default-time-zone       = '+08:00'
+```
 
 ```bash
-# 端口仍是 0.0.0.0:3306 → 重建容器，只绑回环
-#   注意：先 dump 数据再重建，重建会换容器内卷挂载
-docker rm -f mysql   # 有数据卷才不会丢数据，确认 -v 挂载后再执行
-
-# 内存限额 + 随 docker 一起启动
-docker update --memory=512m --memory-swap=1g --restart=always mysql
-
-# 时区 + 2G 关键三项（写进 my.cnf 后重启容器）
-#   innodb_buffer_pool_size = 256M
-#   performance_schema      = OFF
-#   default-time-zone       = '+08:00'
-
-# Redis 目前没有消费方，停掉省 40MB
+docker restart mysql
+# Redis 目前无消费方，停掉省 40MB
 docker stop redis
 ```
 
 ---
 
-## 1. 建目录、放配置
+## 1. 建目录 + 口令
 
 ```bash
-mkdir -p /opt/dsa/{api,web/dist,backup} /opt/dsa/api/dump
-chown -R www-data:www-data /opt/dsa/web
-chmod 755 /opt/dsa/api /opt/dsa/backup
-```
+mkdir -p /opt/dsa/{api/dump,web/dist,nginx,backup}
+chmod 755 /opt/dsa /opt/dsa/api /opt/dsa/nginx /opt/dsa/backup
 
-把本仓库 `deploy/` 下的三个文件传上去（之后不需要再动）：
-
-```bash
-# 在本机仓库根目录执行
-scp deploy/Dockerfile deploy/compose.yaml root@IP:/opt/dsa/api/
-scp deploy/nginx/dsa.conf           root@IP:/etc/nginx/conf.d/dsa.conf
-scp deploy/backup/dump.sh           root@IP:/opt/dsa/backup/dump.sh
-ssh root@IP 'chmod +x /opt/dsa/backup/dump.sh'
-```
-
-**数据库口令**（不给版本库）：
-
-```bash
-ssh root@IP 'cat > /opt/dsa/api/.env <<EOF
+cat > /opt/dsa/api/.env <<'EOF'
 DB_USER=root
 DB_PASSWORD=换成真实口令
 DB_NAME=dsa_log
 EOF
-chmod 600 /opt/dsa/api/.env'
+chmod 600 /opt/dsa/api/.env
 ```
 
-> `compose.yaml` 里写的是 `${DB_PASSWORD:?...}`，没有这个 `.env` 时 `docker compose up` 会直接报错退出——
-> 这是刻意的：缺口令时宁可起不来，也不要拿空口令去连库。
-
-**备份用的 my.cnf**（避免口令出现在 `ps` 里）：
-
-```bash
-ssh root@IP 'cat > /opt/dsa/backup/.my.cnf <<EOF
-[client]
-user=root
-password=换成真实口令
-EOF
-chmod 600 /opt/dsa/backup/.my.cnf'
-```
+> `compose.yaml` 里是 `${DB_PASSWORD:?...}`：没有这个文件时 `docker compose up` 直接报错退出。
+> 这是刻意的——缺口令时宁可起不来，也不要拿空口令去连库。
+> 备份脚本也从这份 `.env` 读口令，只维护一处。
 
 ---
 
-## 2. nginx：账号与站点
+## 2. nginx 账号（basic auth）
+
+**必须在首次启动前做**。compose 会把 `.htpasswd` 挂进容器，而 Docker 遇到「宿主机上不存在的文件」
+会建一个同名**目录**，nginx 随即报 `auth_basic_user_file` 是个目录——从报错完全看不出根因。
 
 ```bash
-# 账号密码（apr1 是 nginx 认的格式；-c 会覆盖整个文件，追加时去掉 -c）
-ssh root@IP 'printf "dsa:$(openssl passwd -apr1 "换成访问密码")\n" > /etc/nginx/.htpasswd && chmod 640 /etc/nginx/.htpasswd'
-
-ssh root@IP 'nginx -t && systemctl enable --now nginx && systemctl reload nginx'
+mkdir -p /opt/dsa/nginx
+docker run --rm httpd:2.4-alpine htpasswd -nbB dsa '换成访问密码' > /opt/dsa/nginx/.htpasswd
+# worker 进程在容器内是 nginx 用户（gid 101），属主必须是 root、组给 101 才能读
+chown root:101 /opt/dsa/nginx/.htpasswd
+chmod 640 /opt/dsa/nginx/.htpasswd
+cat /opt/dsa/nginx/.htpasswd     # 应该是 dsa:$2y$05$... 一行
 ```
 
-安全组只放行 22 与 80。**8080 与 3306 一律不开**（后端只绑 127.0.0.1，开了也连不上，但少一条被扫的入口）。
+- `-B` 是 bcrypt，比 `apr1` 强；nginx stable 线支持 `$2y$`。
+- 万一启动后密码总是不对（个别镜像的 crypt 实现对 bcrypt 支持不全），退回 `-nb`（apr1）。
+- **如果日志里出现 `Permission denied` 读 .htpasswd**，说明宿主上 gid 101 是别的组：
+  改成 `chmod 644` 即可（bcrypt 哈希泄露也难以爆破，单机私人站点可接受）。
+- 换密码：重跑 `htpasswd` 那条覆盖文件，再 `docker restart dsa-nginx`。
+
+> 不需要 `systemctl`、`/etc/nginx/`、`www-data` 这些宿主概念——nginx 在容器里。
 
 ---
 
@@ -108,17 +91,22 @@ ssh root@IP 'nginx -t && systemctl enable --now nginx && systemctl reload nginx'
 本机执行：
 
 ```bash
-chmod +x deploy/*.sh
+chmod +x deploy/*.sh deploy/backup/dump.sh
 deploy/deploy.sh root@IP
 ```
 
-它会：本机构建后端 + 前端 → scp jar → rsync dist → 远端 `docker compose up -d --build` → 轮询健康检查。
+依次做：本机构建后端 + 前端 → 建远端目录 → 拦一次 `.htpasswd` 缺失 → 同步
+`Dockerfile`/`compose.yaml`/`nginx/dsa.conf` → scp jar → rsync dist → 远端
+`docker compose up -d --build` → 轮询健康检查。
 
-首次 build 要拉 `eclipse-temurin:17-jre-alpine`（约 110MB）。拉不动就在服务器配镜像加速：
+首次会拉两个镜像：`eclipse-temurin:17-jre-alpine`（约 110MB）、`nginx:stable-alpine`（约 50MB）。
+拉不动就在服务器配镜像加速后重启 docker（会重启所有容器，挑低峰做）。
+
+改过 `dsa.conf` 之后：
 
 ```bash
-# /etc/docker/daemon.json 里加 registry-mirrors 后：
-systemctl restart docker    # 会重启所有容器，挑低峰做
+ssh root@IP 'docker exec dsa-nginx nginx -t'                  # 先验语法
+ssh root@IP 'cd /opt/dsa/api && docker compose restart nginx'
 ```
 
 ---
@@ -126,44 +114,47 @@ systemctl restart docker    # 会重启所有容器，挑低峰做
 ## 4. 备份 cron
 
 ```bash
-ssh root@IP 'cat > /etc/cron.d/dsa <<EOF
-# 每天 03:30 全量 dump（保留 14 天）
+cat > /etc/cron.d/dsa <<'EOF'
+# 每天 03:30 全量备份（走 docker exec，宿主不需要 mysql 客户端）
 30 3 * * * root /opt/dsa/backup/dump.sh >> /var/log/dsa-backup.log 2>&1
-# 每天 04:00 探活：接口不通就重启容器（容器内进程卡死时 restart 策略不会触发）
+# 每天 04:00 探活：接口不通就重启容器（进程卡死时 restart 策略不会触发）
 0 4 * * * root curl -fsS -u dsa:密码 http://127.0.0.1/api/health >/dev/null || docker restart dsa-api
-EOF'
+EOF
+chmod 644 /etc/cron.d/dsa
 ```
 
-手动验一次，别等到出事才发现脚本写错：
+手动验一次，别等出事才发现脚本写错：
 
 ```bash
-ssh root@IP '/opt/dsa/backup/dump.sh && ls -lh /opt/dsa/backup/'
+/opt/dsa/backup/dump.sh && ls -lh /opt/dsa/backup/
 ```
 
 ---
 
 ## 5. 上线核对（逐条过，别跳）
 
-1. `systemctl is-enabled nginx` → `enabled`
-2. `docker inspect dsa-api --format '{{.HostConfig.RestartPolicy.Name}}'` → `unless-stopped`；MySQL → `always`
-3. `ss -lntp`：8080 必须是 `127.0.0.1:8080`，3306 必须是 `127.0.0.1`
+1. `cd /opt/dsa/api && docker compose ps` → `dsa-api` 与 `dsa-nginx` 都是 `running`
+2. `docker inspect dsa-api --format '{{.HostConfig.RestartPolicy.Name}}'` → `unless-stopped`；`dsa-nginx` 同
+3. `ss -lntp`：80 有监听（nginx 容器）；8080 必须是 `127.0.0.1`；3306 必须是 `127.0.0.1`
 4. `curl -u dsa:密码 http://127.0.0.1/api/health` → `code:SUCCESS` 且 `db:ok`
-   （`redis` 字段是 `down`，**不参与判据**——Redis 已停用）
-5. 公网打开站点：先弹 basic auth，输完能进；随便建一道题，刷新后还在
+   （`redis` 是 `down`，**不参与判据**——Redis 已停用）
+5. 公网打开站点：先弹 basic auth，输完能进；建一道题，刷新后还在
 6. **`reboot` 后全链路自动恢复**（必须真做一次，这是 restart 策略唯一的验证方式）
    ```bash
    reboot
-   # 等 60s 后
+   # 等 60s
    curl -u dsa:密码 http://IP/api/health
    ```
-7. 演练恢复一次备份（恢复前先停 app，避免半途被写）：
+7. 演练恢复一次（先停 app，避免半途被写）：
    ```bash
    docker stop dsa-api
-   gunzip -c /opt/dsa/backup/dsa_log-YYYYmmdd-HHMMSS.sql.gz | mysql -uroot -p dsa_log
+   set -a; . /opt/dsa/api/.env; set +a
+   gunzip -c /opt/dsa/backup/dsa_log-YYYYmmdd-HHMMSS.sql.gz \
+     | docker exec -i -e MYSQL_PWD="$DB_PASSWORD" mysql mysql -u"$DB_USER" dsa_log
    docker start dsa-api
    ```
 
-### 内存基线（2G 机器）
+### 内存基线（2G）
 
 ```bash
 free -m            # available 应 > 300MB
@@ -171,42 +162,40 @@ vmstat 1 5         # si/so 必须是 0，非 0 说明已经在换页
 docker stats --no-stream
 ```
 
-经验值：MySQL ~300MB、dsa-api ~400MB（堆 448m 打满）、nginx ~25MB、系统 ~250MB。
+经验值：MySQL ~300MB、dsa-api ~400MB（堆 448m 打满）、dsa-nginx ~15MB、系统 ~250MB。
 
 ---
 
 ## 6. 日常发版与回滚
 
 ```bash
-# 发版（自动打时间戳 tag）
-deploy/deploy.sh root@IP
-
-# 看有哪些 tag 可回滚
-deploy/rollback.sh root@IP
-
-# 回滚到某个 tag（秒级，不重新构建）
-deploy/rollback.sh root@IP 202610211530
+deploy/deploy.sh root@IP                  # 构建 + 上传 + 重建（编排与 nginx 配置一起同步）
+deploy/rollback.sh root@IP                # 列出可回滚的 tag
+deploy/rollback.sh root@IP 202610211530   # 切到指定 tag（秒级，不重建）
 ```
 
-**回滚能生效的前提**：每次发版 tag 不同。`deploy.sh` 用 `date +%Y%m%d%H%M`，同一分钟连发两次会覆盖——真要连发，手动改 `IMAGE_TAG`。
+**回滚能生效的前提**：每次发版 tag 不同。`deploy.sh` 用 `date +%Y%m%d%H%M`，同一分钟连发两次会覆盖。
 
 ---
 
 ## 7. 出问题先看这三处
 
 ```bash
-docker logs --tail 120 dsa-api          # 应用侧（SQL 日志已在 prod 关闭，只剩业务日志）
+docker logs --tail 120 dsa-api       # 应用（prod 已关 SQL 日志，只剩业务日志）
+docker logs --tail 80 dsa-nginx      # nginx 的 access/error 都在这里（写的是 /dev/stdout）
 docker logs --tail 50 mysql
-tail -50 /var/log/nginx/dsa-error.log
 ```
 
 | 症状 | 先查 | 常见原因 |
 | --- | --- | --- |
-| 502 Bad Gateway | `ss -lntp \| grep 8080` | 容器没起来 / 后端绑的不是回环 |
-| 页面能开但接口 500 | `docker logs dsa-api` | 数据库连不上（看是不是 `.env` 缺口令） |
-| 时间差 8 小时 | `date`、`docker exec dsa-api date` | 宿主机时区没设，或 compose 少了 `TZ` |
-| 导入报 500 | 后端日志里 `Column 'xxx' cannot be null` | 备份文件字段与当前表结构不匹配，先 `GET /api/export` 比对 |
-| 磁盘满 | `df -h`、`docker system df` | 日志没限额，或镜像堆积：`docker image prune -f` |
+| 502 Bad Gateway | `ss -lntp \| grep 8080`、`docker ps` | api 没起来；或 api 绑的不是回环 |
+| 一直弹 auth 后又 401 | `docker exec dsa-nginx cat /etc/nginx/.htpasswd` | 文件被建成了目录（见第 2 节）；或哈希格式不支持 |
+| 403 Forbidden | `docker exec dsa-nginx ls -l /usr/share/nginx/html` | dist 权限不对，容器内用户读不了 → 重跑 `deploy.sh` |
+| 页面空白 / 404 | `docker exec dsa-nginx ls /usr/share/nginx/html/index.html` | dist 没同步上，或挂载路径写错 |
+| 页面能开但接口 500 | `docker logs dsa-api` | 数据库连不上（`.env` 缺口令/口令错/MySQL 没起） |
+| 时间差 8 小时 | `date`、`docker exec dsa-api date` | 宿主时区没设，或 compose 少了 `TZ` |
+| 磁盘满 | `df -h`、`docker system df` | 日志没限额；或镜像堆积：`docker image prune -f` |
 | 容器反复重启 | `docker inspect dsa-api --format '{{.State.OOMKilled}}'` | true 就是被 OOM，降 `-Xmx` 或查慢查询 |
+| nginx 起不来 | `docker logs dsa-nginx` | 多半是 `.htpasswd` 或 `dsa.conf` 挂载成了目录 |
 
 回滚永远是第一选项：先回到上一个 tag 恢复可用，再从容查原因。
