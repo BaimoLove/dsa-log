@@ -42,6 +42,30 @@ ssh "${TARGET}" "mkdir -p /opt/dsa/api/dump /opt/dsa/web/dist /opt/dsa/nginx /op
 scp -q "${ROOT}/deploy/Dockerfile" "${ROOT}/deploy/compose.yaml" "${TARGET}:/opt/dsa/api/"
 scp -q "${ROOT}/deploy/nginx/dsa.conf" "${TARGET}:/opt/dsa/nginx/dsa.conf"
 
+# basic auth 账号文件不存在时 nginx 起不来，且 Docker 会把缺失的挂载点建成目录，
+# 报错（auth_basic_user_file 是个目录）完全指不到根因。所以先挡一道。
+if ! ssh "${TARGET}" "test -f /opt/dsa/nginx/.htpasswd"; then
+    cat >&2 <<EOF
+!!! 缺少 /opt/dsa/nginx/.htpasswd（basic auth 账号文件），nginx 会起不来。
+
+在服务器上生成（宿主有 openssl 就行，不用装别的）：
+
+  ssh ${TARGET} 'openssl passwd -apr1 "换成访问密码" | sed "s/^/dsa:/" > /opt/dsa/nginx/.htpasswd'
+  ssh ${TARGET} 'chown root:101 /opt/dsa/nginx/.htpasswd && chmod 640 /opt/dsa/nginx/.htpasswd'
+
+（101 是容器内 nginx worker 的 gid；宿主上若已被别的组占用，退成 chmod 644）
+
+EOF
+    exit 1
+fi
+
+# 另一种失败形态：Docker 已经把缺失的挂载点建成了同名目录
+if ssh "${TARGET}" "test -d /opt/dsa/nginx/.htpasswd"; then
+    echo "!!! /opt/dsa/nginx/.htpasswd 是个目录（Docker 挂载不存在的文件时会这样建）。" >&2
+    echo "    先删掉再重新生成：ssh ${TARGET} 'rm -rf /opt/dsa/nginx/.htpasswd'" >&2
+    exit 1
+fi
+
 echo "==> 上传后端 jar（tag ${TAG}）"
 # compose 里 COPY app.jar，所以远端固定叫 app.jar；版本信息靠 image tag 保留
 scp -q "${JAR}" "${TARGET}:/opt/dsa/api/app.jar"
