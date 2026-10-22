@@ -38,40 +38,9 @@ done
 echo "==> 远端目录与配置"
 ssh "${TARGET}" "mkdir -p /opt/dsa/api/dump /opt/dsa/web/dist /opt/dsa/nginx /opt/dsa/backup"
 
-# 首次上线最容易踩的坑：compose 把 .htpasswd 挂进容器，而 Docker 遇到
-# 「宿主机上不存在的文件」会建一个**同名目录**，nginx 随即报
-# auth_basic_user_file 是个目录 —— 报错信息完全指不到根因。所以先挡一道。
-if ! ssh "${TARGET}" "test -f /opt/dsa/nginx/.htpasswd"; then
-    cat >&2 <<EOF
-!!! 缺少 /opt/dsa/nginx/.htpasswd（basic auth 账号文件），nginx 会起不来。
-
-先生成，二选一（宿主有 openssl 就不用拉镜像，细节见 RUNBOOK 第 2 节）：
-
-  有 openssl：
-    ssh ${TARGET} 'mkdir -p /opt/dsa/nginx'
-    ssh ${TARGET} 'openssl passwd -apr1 "换成访问密码" | sed "s/^/dsa:/" > /opt/dsa/nginx/.htpasswd'
-
-  没有 openssl：
-    ssh ${TARGET} 'mkdir -p /opt/dsa/nginx'
-    ssh ${TARGET} 'docker run --rm httpd:2.4-alpine htpasswd -nbB dsa "换成访问密码" > /opt/dsa/nginx/.htpasswd'
-
-  补权限（两种都要）：
-    ssh ${TARGET} 'chown root:101 /opt/dsa/nginx/.htpasswd && chmod 640 /opt/dsa/nginx/.htpasswd'
-
-EOF
-    exit 1
-fi
-
 # 编排与 nginx 配置跟着仓库走：改完配置直接发版，不会出现「服务器上还是旧配置」
 scp -q "${ROOT}/deploy/Dockerfile" "${ROOT}/deploy/compose.yaml" "${TARGET}:/opt/dsa/api/"
 scp -q "${ROOT}/deploy/nginx/dsa.conf" "${TARGET}:/opt/dsa/nginx/dsa.conf"
-
-# 同样要防「文件被 Docker 建成目录」：万一远端 .htpasswd 是个目录，这里直接说清楚
-if ssh "${TARGET}" "test -d /opt/dsa/nginx/.htpasswd"; then
-    echo "!!! /opt/dsa/nginx/.htpasswd 是个目录（Docker 挂载不存在的文件时会这样建）。" >&2
-    echo "    删除后按第 2 节重新生成：ssh ${TARGET} 'rm -rf /opt/dsa/nginx/.htpasswd'" >&2
-    exit 1
-fi
 
 echo "==> 上传后端 jar（tag ${TAG}）"
 # compose 里 COPY app.jar，所以远端固定叫 app.jar；版本信息靠 image tag 保留

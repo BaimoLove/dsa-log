@@ -62,46 +62,32 @@ chmod 600 /opt/dsa/api/.env
 
 ---
 
-## 2. nginx 账号（basic auth）
+## 2. 访问控制（不用密码，靠安全组）
 
-**必须在首次启动前做**。compose 会把 `.htpasswd` 挂进容器，而 Docker 遇到「宿主机上不存在的文件」
-会建一个同名**目录**，nginx 随即报 `auth_basic_user_file` 是个目录——从报错完全看不出根因。
+这台机器的 80 端口只对自己的固定 IP 开放，**不做 basic auth**——网络层已经拦掉了，
+再加一层密码只是多一次输入。所以本步骤不需要 `.htpasswd`，nginx 配置里也没有 `auth_basic`。
 
-`.htpasswd` 是 Apache 定的格式，nginx 也读它（`auth_basic_user_file`）。生成密码哈希有两条路，
-**优先 A**：不需要拉任何镜像。
+上线前请确认安全组（阿里云 → 实例 → 安全组 → 入方向）：
 
-**方式 A：宿主有 openssl（多数系统自带，因为有 ssh）**
-
-```bash
-mkdir -p /opt/dsa/nginx
-printf "dsa:%s\n" "$(openssl passwd -apr1 '换成访问密码')" > /opt/dsa/nginx/.htpasswd
-```
-
-**方式 B：宿主没有 openssl，借一次性容器的 htpasswd**（跑完 `--rm` 自删，不常驻）
-
-```bash
-mkdir -p /opt/dsa/nginx
-docker run --rm httpd:2.4-alpine htpasswd -nbB dsa '换成访问密码' > /opt/dsa/nginx/.htpasswd
-```
-
-两种方式都要补权限（容器内 nginx worker 是 gid 101，属主 root + 组 101 才读得到）：
-
-```bash
-chown root:101 /opt/dsa/nginx/.htpasswd
-chmod 640 /opt/dsa/nginx/.htpasswd
-cat /opt/dsa/nginx/.htpasswd     # A: dsa:$apr1$...   B: dsa:$2y$05$...
-```
-
-| 格式 | 强度 | 兼容性 |
+| 端口 | 授权对象 | 说明 |
 | --- | --- | --- |
-| `$apr1$`（方式 A） | MD5 + 盐 + 1000 次迭代，够单用户私人站点 | nginx **一定**支持 |
-| `$2y$05$`（方式 B，bcrypt） | 更强 | alpine 版 nginx 的 crypt 实现偶有不支持，表现为「密码对但一直 401」 |
+| 22 | **你的 IP/32** | SSH，最好也限制来源 |
+| 80 | **你的 IP/32** | 唯一对外的业务端口 |
+| 8080 / 3306 | **不开放** | 后端与 MySQL 只绑 127.0.0.1，开了也没用，但少一条被扫的入口 |
 
-- **启动后一直弹 401 且密码确认没错** → 八成是 bcrypt 不被该镜像支持，换方式 A 重生成，再 `docker restart dsa-nginx`。
-- **日志里出现 `Permission denied` 读 .htpasswd** → 宿主上 gid 101 被别的组占了：改成 `chmod 644`（哈希泄露也难以爆破，私人站点可接受）。
-- 换密码：重跑生成命令覆盖文件，再 `docker restart dsa-nginx`。
+```bash
+# 在服务器上确认 8080 只绑回环（这是一切的前提）
+ss -lntp | grep -E ':(80|8080|3306)[[:space:]]'
+```
 
-> 不需要 `systemctl`、`/etc/nginx/`、`www-data` 这些宿主概念——nginx 在容器里。
+**风险提示**：安全组是唯一防线，它的问题是「配置漂移」——某天为了临时调试加了
+`0.0.0.0/0` 忘了删，站点就完全公开了。两个习惯可以兜住：
+- 调试时改规则，用完立刻改回；每次改完在日历上留个提醒
+- RUNBOOK 第 5 节的核对项每次都看一眼授权对象是不是 `/32`
+
+> 如果哪天想在公网随便一台机器上临时访问，再回到 basic auth 也很快：
+> 在 `dsa.conf` 的 `server {` 里加两行 `auth_basic` / `auth_basic_user_file`，
+> 把 `.htpasswd` 挂回 compose，生成方式：`openssl passwd -apr1 '密码' | sed 's/^/dsa:/' > .htpasswd`。
 
 ---
 
@@ -114,7 +100,7 @@ chmod +x deploy/*.sh deploy/backup/dump.sh
 deploy/deploy.sh root@IP
 ```
 
-依次做：本机构建后端 + 前端 → 建远端目录 → 拦一次 `.htpasswd` 缺失 → 同步
+依次做：本机构建后端 + 前端 → 建远端目录 → 同步
 `Dockerfile`/`compose.yaml`/`nginx/dsa.conf` → scp jar → rsync dist → 远端
 `docker compose up -d --build` → 轮询健康检查。
 
@@ -137,7 +123,7 @@ cat > /etc/cron.d/dsa <<'EOF'
 # 每天 03:30 全量备份（走 docker exec，宿主不需要 mysql 客户端）
 30 3 * * * root /opt/dsa/backup/dump.sh >> /var/log/dsa-backup.log 2>&1
 # 每天 04:00 探活：接口不通就重启容器（进程卡死时 restart 策略不会触发）
-0 4 * * * root curl -fsS -u dsa:密码 http://127.0.0.1/api/health >/dev/null || docker restart dsa-api
+0 4 * * * root curl -fsS http://127.0.0.1/api/health >/dev/null || docker restart dsa-api
 EOF
 chmod 644 /etc/cron.d/dsa
 ```
@@ -158,14 +144,14 @@ chmod 644 /etc/cron.d/dsa
 1. `cd /opt/dsa/api && docker compose ps` → `dsa-api` 与 `dsa-nginx` 都是 `running`
 2. `docker inspect dsa-api --format '{{.HostConfig.RestartPolicy.Name}}'` → `unless-stopped`；`dsa-nginx` 同
 3. `ss -lntp`：80 有监听（nginx 容器）；8080 必须是 `127.0.0.1`；3306 必须是 `127.0.0.1`
-4. `curl -u dsa:密码 http://127.0.0.1/api/health` → `code:SUCCESS` 且 `db:ok`
+4. `curl http://127.0.0.1/api/health` → `code:SUCCESS` 且 `db:ok`
    （`redis` 是 `down`，**不参与判据**——Redis 已停用）
-5. 公网打开站点：先弹 basic auth，输完能进；建一道题，刷新后还在
+5. 公网打开站点直接能进（不弹密码框）；建一道题，刷新后还在
 6. **`reboot` 后全链路自动恢复**（必须真做一次，这是 restart 策略唯一的验证方式）
    ```bash
    reboot
    # 等 60s
-   curl -u dsa:密码 http://IP/api/health
+   curl http://IP/api/health
    ```
 7. 演练恢复一次（先停 app，避免半途被写）：
    ```bash
@@ -217,13 +203,13 @@ docker logs --tail 50 mysql8         # 换成实际容器名
 | 症状 | 先查 | 常见原因 |
 | --- | --- | --- |
 | 502 Bad Gateway | `ss -lntp \| grep 8080`、`docker ps` | api 没起来；或 api 绑的不是回环 |
-| 一直弹 auth 后又 401 | `docker exec dsa-nginx cat /etc/nginx/.htpasswd` | 文件被建成了目录（见第 2 节）；或哈希格式不支持 |
+| 公网打不开 / 连接超时 | 云控制台看安全组入方向 | 你当前 IP 变了（换网络、手机热点），把 80 的授权对象改成新 IP/32 |
 | 403 Forbidden | `docker exec dsa-nginx ls -l /usr/share/nginx/html` | dist 权限不对，容器内用户读不了 → 重跑 `deploy.sh` |
 | 页面空白 / 404 | `docker exec dsa-nginx ls /usr/share/nginx/html/index.html` | dist 没同步上，或挂载路径写错 |
 | 页面能开但接口 500 | `docker logs dsa-api` | 数据库连不上（`.env` 缺口令/口令错/MySQL 没起） |
 | 时间差 8 小时 | `date`、`docker exec dsa-api date` | 宿主时区没设，或 compose 少了 `TZ` |
 | 磁盘满 | `df -h`、`docker system df` | 日志没限额；或镜像堆积：`docker image prune -f` |
 | 容器反复重启 | `docker inspect dsa-api --format '{{.State.OOMKilled}}'` | true 就是被 OOM，降 `-Xmx` 或查慢查询 |
-| nginx 起不来 | `docker logs dsa-nginx` | 多半是 `.htpasswd` 或 `dsa.conf` 挂载成了目录 |
+| nginx 起不来 | `docker logs dsa-nginx` | `dsa.conf` 语法错误，或该文件被 Docker 建成了目录 |
 
 回滚永远是第一选项：先回到上一个 tag 恢复可用，再从容查原因。
